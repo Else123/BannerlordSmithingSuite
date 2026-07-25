@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace SmithingSuite.Logic
 {
@@ -22,7 +23,33 @@ namespace SmithingSuite.Logic
         /// </summary>
         public int SmeltEnergyCost { get; }
 
+        /// <summary>
+        /// Crafting stamina cost of a single refine action for THIS smith (GetEnergyCostForRefining,
+        /// base 6, reduced by the PracticalRefiner perk). Like <see cref="SmeltEnergyCost"/>, flat
+        /// per-smith and independent of which formula is applied.
+        /// </summary>
+        public int RefineEnergyCost { get; }
+
+        /// <summary>
+        /// The refining formulas this smith's perks unlock (per-hero, perk-gated - see
+        /// DefaultSmithingModel.GetRefiningFormulas). Never null; empty when unknown or when the
+        /// snapshot was built via the Slice 1 constructor.
+        /// </summary>
+        public IReadOnlyList<RefineFormulaSnapshot> RefineFormulas { get; }
+
         public SmithSnapshot(string heroId, string name, int stamina, int maxStamina, int smeltEnergyCost)
+            : this(heroId, name, stamina, maxStamina, smeltEnergyCost, refineEnergyCost: 0, refineFormulas: null)
+        {
+        }
+
+        public SmithSnapshot(
+            string heroId,
+            string name,
+            int stamina,
+            int maxStamina,
+            int smeltEnergyCost,
+            int refineEnergyCost,
+            IReadOnlyList<RefineFormulaSnapshot> refineFormulas)
         {
             HeroId = heroId;
             Name = name;
@@ -32,6 +59,8 @@ namespace SmithingSuite.Logic
             Stamina = Math.Max(0, stamina);
             MaxStamina = maxStamina;
             SmeltEnergyCost = smeltEnergyCost;
+            RefineEnergyCost = refineEnergyCost;
+            RefineFormulas = refineFormulas ?? new RefineFormulaSnapshot[0];
         }
 
         /// <summary>
@@ -41,5 +70,11 @@ namespace SmithingSuite.Logic
         /// can't smelt" - so capacity is defined as 0 in that case, never negative.
         /// </summary>
         public int Capacity => SmeltEnergyCost <= 0 ? 0 : Stamina / SmeltEnergyCost;
+
+        /// <summary>
+        /// How many refines this smith can afford right now. Same non-positive-cost guard as
+        /// <see cref="Capacity"/>, applied to the refine cost instead of the smelt cost.
+        /// </summary>
+        public int RefineCapacity => RefineEnergyCost <= 0 ? 0 : Stamina / RefineEnergyCost;
     }
 }
