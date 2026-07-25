@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Module>
+	<Name value="Smithing Suite"/>
+	<Id value="SmithingSuite"/>
+	<Version value="v1.4.7"/>
+	<SingleplayerModule value="true"/>
+	<MultiplayerModule value="false"/>
+	<Official value="false"/>
+	<DependedModules>
+		<DependedModule Id="Native" DependentVersion="v1.4.7" Optional="false" />
+		<DependedModule Id="SandBoxCore" DependentVersion="v1.4.7" Optional="false" />
+		<DependedModule Id="Sandbox" DependentVersion="v1.4.7" Optional="false" />
+		<DependedModule Id="StoryMode" DependentVersion="v1.4.7" Optional="false" />
+	</DependedModules>
+	<SubModules>
+		<SubModule>
+			<Name value="SmithingSuite"/>
+			<DLLName value="SmithingSuite.dll"/>
+			<SubModuleClassType value="SmithingSuite.SmithingSuiteSubModule"/>
+			<Tags>
+				<Tag key="DedicatedServerType" value="none"/>
+				<Tag key="IsNoRenderModeElement" value="false"/>
+			</Tags>
+		</SubModule>
+	</SubModules>
+	<Xmls/>
+</Module>
