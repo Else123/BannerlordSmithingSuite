@@ -81,9 +81,13 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Logic\SmithSnapshot.cs" />
+    <Compile Include="Logic\RefineFormulaSnapshot.cs" />
+    <Compile Include="Logic\MaterialStock.cs" />
     <Compile Include="Logic\SmeltCandidate.cs" />
     <Compile Include="Logic\SmeltPlan.cs" />
     <Compile Include="Logic\SmeltPlanner.cs" />
+    <Compile Include="Logic\RefinePlan.cs" />
+    <Compile Include="Logic\RefinePlanner.cs" />
     <Compile Include="Integration\ISmithingConnector.cs" />
     <Compile Include="Integration\SmithingConnector.cs" />
     <Compile Include="Integration\SmithingBehavior.cs" />
