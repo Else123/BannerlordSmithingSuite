@@ -91,7 +91,9 @@
     <Compile Include="Integration\ISmithingConnector.cs" />
     <Compile Include="Integration\SmithingConnector.cs" />
     <Compile Include="Integration\SmithingBehavior.cs" />
+    <Compile Include="Integration\SmithingLog.cs" />
     <Compile Include="SmithingSuiteSubModule.cs" />
+    <Compile Include="SmithingSuiteConfig.cs" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="SubModule.xml">

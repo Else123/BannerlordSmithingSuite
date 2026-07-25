@@ -144,18 +144,21 @@ namespace SmithingSuite.Integration
             ItemRoster roster = PartyBase.MainParty?.MobileParty?.ItemRoster;
             if (behavior == null || roster == null)
             {
+                LogSmeltAttempt(heroId, itemId, false, "no crafting behavior or item roster");
                 return false;
             }
 
             Hero hero = FindSmith(heroId);
             if (hero == null)
             {
+                LogSmeltAttempt(heroId, itemId, false, "hero not found among available smiths");
                 return false;
             }
 
             EquipmentElement matchedElement;
             if (!TryFindUnlockedElement(roster, itemId, out matchedElement))
             {
+                LogSmeltAttempt(heroId, itemId, false, "item not found in roster, or only locked stacks remain");
                 return false;
             }
 
@@ -166,10 +169,12 @@ namespace SmithingSuite.Integration
             int stamina = behavior.GetHeroCraftingStamina(hero);
             if (stamina < smeltEnergyCost)
             {
+                LogSmeltAttempt(heroId, itemId, false, "stamina " + stamina + " < cost " + smeltEnergyCost);
                 return false;
             }
 
             behavior.DoSmelting(hero, matchedElement);
+            LogSmeltAttempt(heroId, itemId, true, null);
             return true;
         }
 
@@ -178,12 +183,14 @@ namespace SmithingSuite.Integration
             var behavior = Campaign.Current?.GetCampaignBehavior<ICraftingCampaignBehavior>();
             if (behavior == null)
             {
+                LogRefineAttempt(heroId, formulaIndex, "?", false, "no crafting behavior");
                 return false;
             }
 
             Hero hero = FindSmith(heroId);
             if (hero == null)
             {
+                LogRefineAttempt(heroId, formulaIndex, "?", false, "hero not found among available smiths");
                 return false;
             }
 
@@ -195,10 +202,13 @@ namespace SmithingSuite.Integration
                 Campaign.Current.Models.SmithingModel.GetRefiningFormulas(hero).ToList();
             if (formulaIndex < 0 || formulaIndex >= formulas.Count)
             {
+                LogRefineAttempt(heroId, formulaIndex, "?", false,
+                    "formula index out of range (hero currently has " + formulas.Count + ")");
                 return false;
             }
 
             Crafting.RefiningFormula formula = formulas[formulaIndex];
+            string description = DescribeFormula(formulaIndex, formula);
 
             // The plan was computed against a snapshot; the world may have moved since (another
             // action already spent this hero's stamina), so re-check against live state rather
@@ -207,10 +217,12 @@ namespace SmithingSuite.Integration
             int stamina = behavior.GetHeroCraftingStamina(hero);
             if (stamina < refineEnergyCost)
             {
+                LogRefineAttempt(heroId, formulaIndex, description, false, "stamina " + stamina + " < cost " + refineEnergyCost);
                 return false;
             }
 
             behavior.DoRefinement(hero, formula);
+            LogRefineAttempt(heroId, formulaIndex, description, true, null);
             return true;
         }
 
@@ -285,6 +297,45 @@ namespace SmithingSuite.Integration
 
             Crafting.RefiningFormula representative = formulas[0];
             return Campaign.Current.Models.SmithingModel.GetEnergyCostForRefining(ref representative, hero);
+        }
+
+        // Per-action execution detail is logged HERE (not in SmithingBehavior) because this is
+        // the only layer that knows WHY an attempt failed (hero gone, item locked, stamina too
+        // low) - the behavior only ever sees the bool return value.
+        private static void LogSmeltAttempt(string heroId, string itemId, bool success, string failReason)
+        {
+            string status = success ? "OK  " : "FAIL";
+            string line = "  " + status + " " + heroId + " -> " + itemId;
+            if (!success && failReason != null)
+            {
+                line += " (" + failReason + ")";
+            }
+
+            SmithingLog.Line(line);
+        }
+
+        private static void LogRefineAttempt(string heroId, int formulaIndex, string description, bool success, string failReason)
+        {
+            string status = success ? "OK  " : "FAIL";
+            string line = "  " + status + " " + heroId + " -> [" + formulaIndex + "] " + description;
+            if (!success && failReason != null)
+            {
+                line += " (" + failReason + ")";
+            }
+
+            SmithingLog.Line(line);
+        }
+
+        // Same field mapping as ProjectRefineFormulas, applied to a single formula - reused here
+        // purely to get a readable "Wood 2 -> Charcoal 3" style description for the execution log.
+        private static string DescribeFormula(int formulaIndex, Crafting.RefiningFormula formula)
+        {
+            return SmithingLog.Describe(new RefineFormulaSnapshot(
+                formulaIndex,
+                (int)formula.Input1, formula.Input1Count,
+                (int)formula.Input2, formula.Input2Count,
+                (int)formula.Output, formula.OutputCount,
+                (int)formula.Output2, formula.Output2Count));
         }
 
         private static IReadOnlyList<RefineFormulaSnapshot> ProjectRefineFormulas(List<Crafting.RefiningFormula> formulas)
