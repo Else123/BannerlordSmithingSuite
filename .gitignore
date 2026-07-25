@@ -1,0 +1,14 @@
+# Build output
+bin/
+obj/
+TestResults/
+
+# Local machine paths (game install location differs per developer)
+paths.props.user
+
+# Visual Studio / Rider
+.vs/
+.idea/
+*.user
+*.suo
+*.userprefs
