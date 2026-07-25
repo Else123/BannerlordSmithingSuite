@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Helpers;
 using SmithingSuite.Logic;
 using TaleWorlds.CampaignSystem;
@@ -16,6 +17,9 @@ namespace SmithingSuite.Integration
     /// </summary>
     public sealed class SmithingConnector : ISmithingConnector
     {
+        // Matches MaterialStock's internal slot count (IronOre=0 .. Charcoal=8).
+        private const int MaterialOrdinalCount = 9;
+
         public IReadOnlyList<SmithSnapshot> GetSmiths()
         {
             var behavior = Campaign.Current?.GetCampaignBehavior<ICraftingCampaignBehavior>();
@@ -57,11 +61,46 @@ namespace SmithingSuite.Integration
                     ? 0
                     : Campaign.Current.Models.SmithingModel.GetEnergyCostForSmelting(representativeItem, hero);
 
+                // CONTRACT: materialised ONCE here via .ToList() and never re-sorted or filtered.
+                // GetRefiningFormulas is per-hero and perk-gated, so there is no stable global id
+                // for a formula - the planner only ever carries a FormulaIndex (this list's
+                // position), and ExecuteRefine later re-materialises the SAME hero's formula list
+                // the same way to map that index back to a real RefiningFormula. If this
+                // enumeration and ExecuteRefine's ever disagreed on order, the planner and
+                // connector would silently execute the wrong formula.
+                List<Crafting.RefiningFormula> refineFormulas =
+                    Campaign.Current.Models.SmithingModel.GetRefiningFormulas(hero).ToList();
+                int refineEnergyCost = GetRefineEnergyCost(refineFormulas, hero);
+
                 snapshots.Add(new SmithSnapshot(hero.StringId, hero.Name?.ToString() ?? hero.StringId,
-                    stamina, maxStamina, smeltEnergyCost));
+                    stamina, maxStamina, smeltEnergyCost, refineEnergyCost, ProjectRefineFormulas(refineFormulas)));
             }
 
             return snapshots;
+        }
+
+        public MaterialStock GetMaterialStock()
+        {
+            var stock = new MaterialStock();
+            ItemRoster roster = PartyBase.MainParty?.MobileParty?.ItemRoster;
+            if (roster == null)
+            {
+                return stock;
+            }
+
+            for (int ordinal = 0; ordinal < MaterialOrdinalCount; ordinal++)
+            {
+                ItemObject materialItem =
+                    Campaign.Current.Models.SmithingModel.GetCraftingMaterialItem((CraftingMaterials)ordinal);
+                if (materialItem == null)
+                {
+                    continue;
+                }
+
+                stock.Set(ordinal, CountItemInRoster(roster, materialItem));
+            }
+
+            return stock;
         }
 
         public IReadOnlyList<SmeltCandidate> GetSmeltCandidates()
@@ -134,6 +173,47 @@ namespace SmithingSuite.Integration
             return true;
         }
 
+        public bool ExecuteRefine(string heroId, int formulaIndex)
+        {
+            var behavior = Campaign.Current?.GetCampaignBehavior<ICraftingCampaignBehavior>();
+            if (behavior == null)
+            {
+                return false;
+            }
+
+            Hero hero = FindSmith(heroId);
+            if (hero == null)
+            {
+                return false;
+            }
+
+            // Re-resolve the formula fresh rather than trusting the planner's snapshot: perks or
+            // game state may have moved since planning, and formulaIndex is only meaningful
+            // against a re-materialisation of THIS hero's own GetRefiningFormulas list (see the
+            // stability contract documented in GetSmiths()).
+            List<Crafting.RefiningFormula> formulas =
+                Campaign.Current.Models.SmithingModel.GetRefiningFormulas(hero).ToList();
+            if (formulaIndex < 0 || formulaIndex >= formulas.Count)
+            {
+                return false;
+            }
+
+            Crafting.RefiningFormula formula = formulas[formulaIndex];
+
+            // The plan was computed against a snapshot; the world may have moved since (another
+            // action already spent this hero's stamina), so re-check against live state rather
+            // than trusting the plan blindly - same defensive pattern as ExecuteSmelt.
+            int refineEnergyCost = Campaign.Current.Models.SmithingModel.GetEnergyCostForRefining(ref formula, hero);
+            int stamina = behavior.GetHeroCraftingStamina(hero);
+            if (stamina < refineEnergyCost)
+            {
+                return false;
+            }
+
+            behavior.DoRefinement(hero, formula);
+            return true;
+        }
+
         public void Report(string message)
         {
             InformationManager.DisplayMessage(new InformationMessage(message));
@@ -189,6 +269,53 @@ namespace SmithingSuite.Integration
 
             matchedElement = default(EquipmentElement);
             return false;
+        }
+
+        // GetEnergyCostForRefining is flat per-smith and formula-independent (see
+        // SmithSnapshot.RefineEnergyCost), so any one of the hero's own formulas works as the
+        // probe - the ref parameter forces a local variable, it cannot be passed a property or
+        // loop variable directly. Falls back to 0 (== "can't refine", per RefineCapacity) when
+        // the hero currently has no unlocked formula to probe with.
+        private static int GetRefineEnergyCost(List<Crafting.RefiningFormula> formulas, Hero hero)
+        {
+            if (formulas.Count == 0)
+            {
+                return 0;
+            }
+
+            Crafting.RefiningFormula representative = formulas[0];
+            return Campaign.Current.Models.SmithingModel.GetEnergyCostForRefining(ref representative, hero);
+        }
+
+        private static IReadOnlyList<RefineFormulaSnapshot> ProjectRefineFormulas(List<Crafting.RefiningFormula> formulas)
+        {
+            var snapshots = new List<RefineFormulaSnapshot>(formulas.Count);
+            for (int i = 0; i < formulas.Count; i++)
+            {
+                Crafting.RefiningFormula formula = formulas[i];
+                snapshots.Add(new RefineFormulaSnapshot(
+                    i,
+                    (int)formula.Input1, formula.Input1Count,
+                    (int)formula.Input2, formula.Input2Count,
+                    (int)formula.Output, formula.OutputCount,
+                    (int)formula.Output2, formula.Output2Count));
+            }
+
+            return snapshots;
+        }
+
+        private static int CountItemInRoster(ItemRoster roster, ItemObject item)
+        {
+            int count = 0;
+            for (int i = 0; i < roster.Count; i++)
+            {
+                if (roster[i].EquipmentElement.Item == item)
+                {
+                    count += roster[i].Amount;
+                }
+            }
+
+            return count;
         }
 
         private static ItemObject GetFirstSmeltableItem()

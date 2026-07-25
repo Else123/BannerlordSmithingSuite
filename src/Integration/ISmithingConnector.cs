@@ -29,6 +29,21 @@ namespace SmithingSuite.Integration
         /// </summary>
         bool ExecuteSmelt(string heroId, string itemId);
 
+        /// <summary>
+        /// The party's current count of every refining material (ordinals 0..8, matching
+        /// vanilla <c>CraftingMaterials</c>), read from the party inventory.
+        /// </summary>
+        MaterialStock GetMaterialStock();
+
+        /// <summary>
+        /// Executes one planned refine action against the live game state. <paramref name="formulaIndex"/>
+        /// is the position within the hero's OWN <c>GetRefiningFormulas</c> list, as captured in
+        /// <see cref="SmithSnapshot.RefineFormulas"/> - see the connector for the stability contract.
+        /// Returns false (without throwing) if the hero or formula can no longer be resolved, or if
+        /// the hero's current stamina no longer covers the refine cost.
+        /// </summary>
+        bool ExecuteRefine(string heroId, int formulaIndex);
+
         /// <summary>Surfaces a message to the player (e.g. the post-run summary).</summary>
         void Report(string message);
     }

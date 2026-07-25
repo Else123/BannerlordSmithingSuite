@@ -67,24 +67,41 @@ namespace SmithingSuite.Integration
         private void SmithingTownConsequence(MenuCallbackArgs args)
         {
             IReadOnlyList<SmithSnapshot> smithsBefore = _connector.GetSmiths();
-            IReadOnlyList<SmeltCandidate> candidates = _connector.GetSmeltCandidates();
-            SmeltPlan plan = SmeltPlanner.Plan(smithsBefore, candidates);
+            Dictionary<string, int> smeltedCountByHero = RunSmeltPhase(smithsBefore);
 
-            if (plan.Actions.Count == 0)
+            // Smelting produces the raw materials refining consumes (ore, wood -> iron chain,
+            // charcoal), so it must run first, and refining must plan against a FRESH
+            // post-smelt snapshot of both stamina and material stock rather than smithsBefore -
+            // both have changed by the time refining plans.
+            Dictionary<string, int> refinedCountByHero = RunRefinePhase();
+
+            if (smeltedCountByHero.Count == 0 && refinedCountByHero.Count == 0)
             {
-                _connector.Report(new TextObject(
-                    "{=SSNothingToSmelt}Nothing to smelt: every smith is out of crafting stamina, or there are no unlocked smeltable items.",
-                    null).ToString());
+                _connector.Report(NothingToDoMessage());
                 return;
             }
 
-            Dictionary<string, int> smeltedCountByHero = ExecutePlan(plan);
             IReadOnlyList<SmithSnapshot> smithsAfter = _connector.GetSmiths();
-
-            _connector.Report(BuildSummary(smithsBefore, smithsAfter, smeltedCountByHero));
+            _connector.Report(BuildSummary(smithsBefore, smithsAfter, smeltedCountByHero, refinedCountByHero));
         }
 
-        private Dictionary<string, int> ExecutePlan(SmeltPlan plan)
+        private Dictionary<string, int> RunSmeltPhase(IReadOnlyList<SmithSnapshot> smiths)
+        {
+            IReadOnlyList<SmeltCandidate> candidates = _connector.GetSmeltCandidates();
+            SmeltPlan plan = SmeltPlanner.Plan(smiths, candidates);
+            return ExecuteSmeltPlan(plan);
+        }
+
+        private Dictionary<string, int> RunRefinePhase()
+        {
+            IReadOnlyList<SmithSnapshot> smiths = _connector.GetSmiths();
+            MaterialStock stock = _connector.GetMaterialStock();
+            // No floors in this slice (null) - fully aggressive refining per the approved policy.
+            RefinePlan plan = RefinePlanner.Plan(smiths, stock, null);
+            return ExecuteRefinePlan(plan);
+        }
+
+        private Dictionary<string, int> ExecuteSmeltPlan(SmeltPlan plan)
         {
             var smeltedCountByHero = new Dictionary<string, int>();
             foreach (SmeltAction action in plan.Actions)
@@ -102,11 +119,30 @@ namespace SmithingSuite.Integration
             return smeltedCountByHero;
         }
 
-        // Stamina spent is derived from a before/after snapshot pair, not from the planned smelt
-        // cost, because the engine (not the plan) is the source of truth for what stamina was
-        // actually deducted.
+        private Dictionary<string, int> ExecuteRefinePlan(RefinePlan plan)
+        {
+            var refinedCountByHero = new Dictionary<string, int>();
+            foreach (RefineAction action in plan.Actions)
+            {
+                if (!_connector.ExecuteRefine(action.HeroId, action.FormulaIndex))
+                {
+                    continue;
+                }
+
+                int countSoFar;
+                refinedCountByHero.TryGetValue(action.HeroId, out countSoFar);
+                refinedCountByHero[action.HeroId] = countSoFar + 1;
+            }
+
+            return refinedCountByHero;
+        }
+
+        // Stamina spent is derived from a before/after snapshot pair spanning BOTH phases, not
+        // from the planned smelt/refine cost, because the engine (not the plan) is the source of
+        // truth for what stamina was actually deducted.
         private static string BuildSummary(IReadOnlyList<SmithSnapshot> smithsBefore,
-            IReadOnlyList<SmithSnapshot> smithsAfter, Dictionary<string, int> smeltedCountByHero)
+            IReadOnlyList<SmithSnapshot> smithsAfter, Dictionary<string, int> smeltedCountByHero,
+            Dictionary<string, int> refinedCountByHero)
         {
             Dictionary<string, int> staminaBeforeByHero = new Dictionary<string, int>();
             foreach (SmithSnapshot smith in smithsBefore)
@@ -119,7 +155,9 @@ namespace SmithingSuite.Integration
             {
                 int smeltedCount;
                 smeltedCountByHero.TryGetValue(smith.HeroId, out smeltedCount);
-                if (smeltedCount == 0)
+                int refinedCount;
+                refinedCountByHero.TryGetValue(smith.HeroId, out refinedCount);
+                if (smeltedCount == 0 && refinedCount == 0)
                 {
                     continue;
                 }
@@ -128,22 +166,30 @@ namespace SmithingSuite.Integration
                 staminaBeforeByHero.TryGetValue(smith.HeroId, out staminaBefore);
                 int staminaSpent = staminaBefore - smith.Stamina;
 
-                lines.Add(new TextObject("{=SSSmeltSummaryLine}{HERO}: {COUNT} smelted, {STAMINA} stamina spent", null)
+                lines.Add(new TextObject(
+                        "{=SSSmithSummaryLine}{HERO}: {SMELTED} smelted, {REFINED} refined, {STAMINA} stamina spent",
+                        null)
                     .SetTextVariable("HERO", smith.Name)
-                    .SetTextVariable("COUNT", smeltedCount)
+                    .SetTextVariable("SMELTED", smeltedCount)
+                    .SetTextVariable("REFINED", refinedCount)
                     .SetTextVariable("STAMINA", staminaSpent)
                     .ToString());
             }
 
             if (lines.Count == 0)
             {
-                return new TextObject(
-                    "{=SSNothingToSmelt}Nothing to smelt: every smith is out of crafting stamina, or there are no unlocked smeltable items.",
-                    null).ToString();
+                return NothingToDoMessage();
             }
 
             string header = new TextObject("{=SSSmeltSummaryHeader}Automatic smithing:", null).ToString();
             return header + "\n" + string.Join("\n", lines);
+        }
+
+        private static string NothingToDoMessage()
+        {
+            return new TextObject(
+                "{=SSNothingToSmelt}Nothing to smelt: every smith is out of crafting stamina, or there are no unlocked smeltable items.",
+                null).ToString();
         }
     }
 }
