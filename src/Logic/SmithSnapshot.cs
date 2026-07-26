@@ -37,6 +37,29 @@ namespace SmithingSuite.Logic
         /// </summary>
         public IReadOnlyList<RefineFormulaSnapshot> RefineFormulas { get; }
 
+        /// <summary>
+        /// From hero.GetPerkValue(DefaultPerks.Crafting.CuriousSmelter). Multiplies part-research
+        /// gain when smelting. Not for display - it exists so the planner can route items whose
+        /// crafting template still has unopened parts to a smith who has this perk, maximizing
+        /// research progress instead of wasting it on an already-explored template.
+        /// </summary>
+        public bool HasCuriousSmelter { get; }
+
+        /// <summary>
+        /// From hero.GetPerkValue(DefaultPerks.Crafting.PracticalSmelter). Reduces smelt energy
+        /// cost. Not for display - it exists so the planner can route smelt volume to whichever
+        /// smith turns stamina into the most smelts, i.e. prefer this smith when capacity is the
+        /// bottleneck.
+        /// </summary>
+        public bool HasPracticalSmelter { get; }
+
+        /// <summary>
+        /// From hero.GetPerkValue(DefaultPerks.Crafting.PracticalRefiner). Reduces refine energy
+        /// cost, same routing rationale as <see cref="HasPracticalSmelter"/> but for refining.
+        /// Not for display.
+        /// </summary>
+        public bool HasPracticalRefiner { get; }
+
         public SmithSnapshot(string heroId, string name, int stamina, int maxStamina, int smeltEnergyCost)
             : this(heroId, name, stamina, maxStamina, smeltEnergyCost, refineEnergyCost: 0, refineFormulas: null)
         {
@@ -50,6 +73,31 @@ namespace SmithingSuite.Logic
             int smeltEnergyCost,
             int refineEnergyCost,
             IReadOnlyList<RefineFormulaSnapshot> refineFormulas)
+            : this(
+                heroId,
+                name,
+                stamina,
+                maxStamina,
+                smeltEnergyCost,
+                refineEnergyCost,
+                refineFormulas,
+                hasCuriousSmelter: false,
+                hasPracticalSmelter: false,
+                hasPracticalRefiner: false)
+        {
+        }
+
+        public SmithSnapshot(
+            string heroId,
+            string name,
+            int stamina,
+            int maxStamina,
+            int smeltEnergyCost,
+            int refineEnergyCost,
+            IReadOnlyList<RefineFormulaSnapshot> refineFormulas,
+            bool hasCuriousSmelter,
+            bool hasPracticalSmelter,
+            bool hasPracticalRefiner)
         {
             HeroId = heroId;
             Name = name;
@@ -61,6 +109,9 @@ namespace SmithingSuite.Logic
             SmeltEnergyCost = smeltEnergyCost;
             RefineEnergyCost = refineEnergyCost;
             RefineFormulas = refineFormulas ?? new RefineFormulaSnapshot[0];
+            HasCuriousSmelter = hasCuriousSmelter;
+            HasPracticalSmelter = hasPracticalSmelter;
+            HasPracticalRefiner = hasPracticalRefiner;
         }
 
         /// <summary>
