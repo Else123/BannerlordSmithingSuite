@@ -19,5 +19,18 @@ namespace SmithingSuite
         /// the in-game message log, in addition to the existing run-summary Report(...) message.
         /// </summary>
         public static bool LogToScreen { get; set; } = true;
+
+        /// <summary>
+        /// Percentage of a smith's crafting stamina the SMELT phase is allowed to plan against;
+        /// the remainder is left untouched for the REFINE phase's fresh snapshot. Fixes the
+        /// Slice 6 finding that smelting ran first against an essentially unlimited candidate
+        /// list and consumed every point of stamina, leaving refining only the integer-division
+        /// remainder (0 capacity in 60 of 70 observed smith-phases in the first in-game run).
+        /// Set to 50 (the user's "50/50 is good" decision, 2026-07-26) after that run. Read
+        /// through <see cref="Integration.SmithingBehavior"/>, clamped to [0, 100] at the read
+        /// site so an out-of-range value (e.g. from a bad save or future MCM input) cannot break
+        /// planning. Slice 6's MCM will expose this as "Production: SmeltStaminaSharePercent".
+        /// </summary>
+        public static int SmeltStaminaSharePercent { get; set; } = 50;
     }
 }

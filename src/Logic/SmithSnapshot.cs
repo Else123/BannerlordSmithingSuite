@@ -127,5 +127,33 @@ namespace SmithingSuite.Logic
         /// <see cref="Capacity"/>, applied to the refine cost instead of the smelt cost.
         /// </summary>
         public int RefineCapacity => RefineEnergyCost <= 0 ? 0 : Stamina / RefineEnergyCost;
+
+        /// <summary>
+        /// Returns a copy of this snapshot with <see cref="Stamina"/> replaced by a phase's
+        /// share of it, every other field preserved unchanged. Exists so the smelt phase can plan
+        /// against a fraction of the smith's stamina (Slice 6 "phase stamina budget") instead of
+        /// consuming all of it before refining ever gets a turn - the refine phase then takes its
+        /// own fresh, unbudgeted snapshot and naturally sees the untouched remainder.
+        ///
+        /// Safety property: a budget can never GRANT more stamina than the smith actually has -
+        /// <paramref name="stamina"/> is clamped to [0, this.Stamina], so an out-of-range share
+        /// (negative, or a caller passing more than the smith's current total) cannot inflate
+        /// capacity beyond what the unbudgeted snapshot itself would allow.
+        /// </summary>
+        public SmithSnapshot WithStaminaBudget(int stamina)
+        {
+            int clampedStamina = Math.Max(0, Math.Min(stamina, Stamina));
+            return new SmithSnapshot(
+                HeroId,
+                Name,
+                clampedStamina,
+                MaxStamina,
+                SmeltEnergyCost,
+                RefineEnergyCost,
+                RefineFormulas,
+                HasCuriousSmelter,
+                HasPracticalSmelter,
+                HasPracticalRefiner);
+        }
     }
 }

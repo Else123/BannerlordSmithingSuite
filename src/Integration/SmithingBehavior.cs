@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Helpers;
 using SmithingSuite.Logic;
@@ -119,17 +120,77 @@ namespace SmithingSuite.Integration
             SmithingLog.Section("SMELT phase");
             LogSmithPool(smiths);
 
+            // Slice 6 fix: smelting used to plan against the smith's FULL stamina and consume all
+            // of it, leaving refining only the integer-division remainder (0 capacity in 60 of 70
+            // observed smith-phases). Budget smelting down to its configured share; the REFINE
+            // phase keeps taking its own fresh, unbudgeted snapshot afterwards, so it naturally
+            // sees the untouched remainder - see SPEC-SLICE6.md "A. Phase stamina budget".
+            IReadOnlyList<SmithSnapshot> budgetedSmiths = ApplySmeltStaminaBudget(smiths);
+
             IReadOnlyList<SmeltCandidate> candidates = _connector.GetSmeltCandidates();
             LogSmeltCandidates(candidates);
 
-            SmeltPlan plan = SmeltPlanner.Plan(smiths, candidates);
-            LogSmeltPlan(plan, smiths, candidates);
+            SmeltPlan plan = SmeltPlanner.Plan(budgetedSmiths, candidates);
+            LogSmeltPlan(plan, budgetedSmiths, candidates);
 
             Dictionary<string, int> smeltedCountByHero = ExecuteSmeltPlan(plan);
-            LogSmeltedTotals(smeltedCountByHero, smiths);
+            LogSmeltedTotals(smeltedCountByHero, budgetedSmiths);
 
             SmithingLog.Screen("Smithing Suite: smelted " + SumValues(smeltedCountByHero) + " item(s).");
             return smeltedCountByHero;
+        }
+
+        // Maps each smith to a copy whose stamina is scaled down to the configured smelt share,
+        // so SmeltPlanner never sees - and therefore can never spend - the stamina reserved for
+        // refining. Also logs full vs. budgeted stamina and the resulting capacity per smith, so
+        // the split that used to be invisible in smithingsuite.log is now the first thing a
+        // tester sees in the SMELT phase.
+        private static IReadOnlyList<SmithSnapshot> ApplySmeltStaminaBudget(IReadOnlyList<SmithSnapshot> smiths)
+        {
+            int clampedShare = ClampSharePercent(SmithingSuiteConfig.SmeltStaminaSharePercent);
+            LogStaminaBudgetHeader(clampedShare);
+
+            var budgeted = new List<SmithSnapshot>(smiths.Count);
+            foreach (SmithSnapshot smith in smiths)
+            {
+                // Floor, never round up: refining must never be starved by a smelt share that
+                // rounds in its own favor.
+                int budgetedStamina = smith.Stamina * clampedShare / 100;
+                SmithSnapshot budgetedSmith = smith.WithStaminaBudget(budgetedStamina);
+                LogStaminaBudget(smith, budgetedSmith);
+                budgeted.Add(budgetedSmith);
+            }
+
+            return budgeted;
+        }
+
+        // Clamped here, at the read site, rather than trusted from SmithingSuiteConfig - a bad
+        // value there (manual edit, future MCM input) must never be able to hand smelting a
+        // negative or more-than-100% share of a smith's stamina.
+        private static int ClampSharePercent(int sharePercent)
+        {
+            return Math.Max(0, Math.Min(100, sharePercent));
+        }
+
+        private static void LogStaminaBudgetHeader(int clampedSharePercent)
+        {
+            if (!SmithingLog.IsVerbose)
+            {
+                return;
+            }
+
+            SmithingLog.Line("Stamina budget (smelt share=" + clampedSharePercent + "%):");
+        }
+
+        private static void LogStaminaBudget(SmithSnapshot fullSmith, SmithSnapshot budgetedSmith)
+        {
+            if (!SmithingLog.IsVerbose)
+            {
+                return;
+            }
+
+            SmithingLog.Line("  " + fullSmith.Name + ": fullStamina=" + fullSmith.Stamina
+                + ", budgetedStamina=" + budgetedSmith.Stamina + ", smeltCapacity=" + budgetedSmith.Capacity);
         }
 
         private Dictionary<string, int> RunRefinePhase()
