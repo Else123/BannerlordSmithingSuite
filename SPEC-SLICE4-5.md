@@ -63,18 +63,52 @@ public class WeaponDesignVM
 }
 ```
 
-### The armour model - [OPEN], must be closed before the score ships
+### The armour model - [OPEN-critical] CLOSED 2026-07-25, [V-BIN]
 
-Community-reconstructed (NOT verified against the binary):
-base mitigation `Armor / (50 + Armor)`; per-damage-type penetration thresholds
-(cut ~`Armor*0.5`, pierce ~`Armor*0.33`, blunt ~`Armor*0.2`); harsh non-penetration multipliers
-(cut x0.1, pierce x0.25, blunt x0.6).
+Found in managed code: `TaleWorlds.MountAndBlade.DefaultStrikeMagnitudeModel` (implements
+`ComponentInterfaces.StrikeMagnitudeCalculationModel`), called from
+`MissionCombatMechanicsHelper.ComputeBlowDamage`. **All coefficients are hardcoded IL literals -
+there is no XML/`ManagedParameters` override.** Verbatim:
 
-**[OPEN-critical]** Verify against the binary before implementing the score:
-`ilspycmd` on `TaleWorlds.Core`/`TaleWorlds.MountAndBlade` for `CombatStatCalculator`,
-`DefaultDamageCalculationModel` / any `ComputeDamage`-style member, and the armour lookup.
-If the real formula differs, the score changes - do NOT ship community numbers as if they were
-engine truth.
+```csharp
+public override float ComputeRawDamage(DamageTypes damageType, float magnitude,
+    float armorEffectiveness, float absorbedDamageRatio)
+{
+    float bluntFactor = GetBluntDamageFactorByDamageType(damageType); // Cut 0.1, Pierce 0.25, Blunt 0.6
+    float mitigation  = 50f / (50f + armorEffectiveness);
+    float mitigated   = magnitude * mitigation;
+    float blunted     = bluntFactor * mitigated;
+    float penetrating;                       // threshold subtracted from the ALREADY-mitigated magnitude
+    switch (damageType)
+    {
+        case DamageTypes.Cut:    penetrating = MathF.Max(0f, mitigated - armorEffectiveness * 0.5f);  break;
+        case DamageTypes.Pierce: penetrating = MathF.Max(0f, mitigated - armorEffectiveness * 0.33f); break;
+        case DamageTypes.Blunt:  penetrating = MathF.Max(0f, mitigated - armorEffectiveness * 0.2f);  break;
+        default: return 0f;
+    }
+    return (blunted + (1f - bluntFactor) * penetrating) * absorbedDamageRatio;
+}
+
+public enum DamageTypes { Invalid = -1, Cut, Pierce, Blunt, NumberOfDamageTypes }  // TaleWorlds.Core
+```
+
+**Correction to the community model this spec previously assumed:** the numbers are all right, but
+the mechanics were described wrongly. It is **not** "penetrates -> full damage, else a harsh
+multiplier". Both terms are **always blended**: `bluntFactor * mitigated` plus
+`(1 - bluntFactor) * max(0, mitigated - threshold)`. Below the threshold the second term is 0 and
+the result collapses to `bluntFactor * mitigated`, which is why the either/or description happened
+to match there. `ArmourModel.cs` must implement the blend, and AC1's threshold tests must assert
+against it - not against the community wording.
+
+`absorbedDamageRatio` (from `AttackInformation.VictimAgentAbsorbedDamageRatio`, normally 1.0) is a
+final multiplier the community model omits entirely; the advisor treats it as 1.0 and says so.
+
+**Consequence for the design:** effective-damage-vs-armour is now **engine truth, not a heuristic**.
+Only the *weighting between axes* (speed vs reach vs damage) remains opinion - keep that tunable.
+
+[PARTIAL] How the armour NUMBER itself is aggregated per body part
+(`Agent.GetBaseArmorEffectivenessForBodyPart` -> `AgentDrivenProperties`) is engine-fed; the advisor
+therefore evaluates against representative armour VALUES rather than simulating a specific victim.
 
 ### Honest limitation, carried from research
 
