@@ -4,6 +4,7 @@ using Helpers;
 using SmithingSuite.Logic;
 using TaleWorlds.CampaignSystem;
 using TaleWorlds.CampaignSystem.CampaignBehaviors;
+using TaleWorlds.CampaignSystem.CharacterDevelopment;
 using TaleWorlds.CampaignSystem.Party;
 using TaleWorlds.CampaignSystem.Roster;
 using TaleWorlds.Core;
@@ -73,7 +74,10 @@ namespace SmithingSuite.Integration
                 int refineEnergyCost = GetRefineEnergyCost(refineFormulas, hero);
 
                 snapshots.Add(new SmithSnapshot(hero.StringId, hero.Name?.ToString() ?? hero.StringId,
-                    stamina, maxStamina, smeltEnergyCost, refineEnergyCost, ProjectRefineFormulas(refineFormulas)));
+                    stamina, maxStamina, smeltEnergyCost, refineEnergyCost, ProjectRefineFormulas(refineFormulas),
+                    hero.GetPerkValue(DefaultPerks.Crafting.CuriousSmelter),
+                    hero.GetPerkValue(DefaultPerks.Crafting.PracticalSmelter),
+                    hero.GetPerkValue(DefaultPerks.Crafting.PracticalRefiner)));
             }
 
             return snapshots;
@@ -111,7 +115,19 @@ namespace SmithingSuite.Integration
                 return new List<SmeltCandidate>();
             }
 
+            // Optional: TemplateHasUnopenedParts just degrades to false (see HasUnopenedParts)
+            // when there is no crafting behavior to ask - the roster/lock contract below must
+            // not tighten just because this extra bit of info is unavailable.
+            var behavior = Campaign.Current?.GetCampaignBehavior<ICraftingCampaignBehavior>();
+
             HashSet<string> lockedKeys = GetLockedKeys();
+
+            // PERFORMANCE: IsOpened() walks every piece of a CraftingTemplate, and this method is
+            // called once per candidate - many candidates share the same template (e.g. several
+            // stacks of different swords all feeding "OneHandedSword"). Caching the per-template
+            // result for the duration of this single call turns an otherwise-quadratic roster scan
+            // (candidates x pieces-per-template) into one piece-walk per distinct template.
+            var unopenedPartsByTemplateId = new Dictionary<string, bool>();
 
             // KNOWN SIMPLIFICATION (accepted for this slice): candidates are keyed by item
             // StringId, so two roster stacks of the same item differing only by ItemModifier
@@ -131,11 +147,47 @@ namespace SmithingSuite.Integration
                 // Locked stacks are still reported (never silently dropped) so the planner is
                 // the single place that decides what to do with the lock.
                 bool isLocked = lockedKeys.Contains(BuildLockKey(element.EquipmentElement));
+
+                // Guard: WeaponDesign.Template can itself be null for a malformed/edge-case
+                // design - fall back to "no template info" rather than throwing or skipping the
+                // item, matching the empty-TemplateId contract on SmeltCandidate.
+                CraftingTemplate template = item.WeaponDesign.Template;
+                string templateId = template?.StringId ?? "";
+                bool templateHasUnopenedParts = template != null && behavior != null
+                    && HasUnopenedParts(behavior, template, unopenedPartsByTemplateId);
+
                 candidates.Add(new SmeltCandidate(item.StringId, item.Name?.ToString() ?? item.StringId,
-                    element.Amount, isLocked));
+                    element.Amount, isLocked, item.Value, templateId, templateHasUnopenedParts));
             }
 
             return candidates;
+        }
+
+        // True when at least one piece of the template is not yet unlocked - i.e. smelting an
+        // item that feeds this template can still make research progress. Cache is keyed by
+        // template StringId and lives only for the caller's single GetSmeltCandidates() call -
+        // see the PERFORMANCE note at the call site for why caching matters here.
+        private static bool HasUnopenedParts(ICraftingCampaignBehavior behavior, CraftingTemplate template,
+            Dictionary<string, bool> unopenedPartsByTemplateId)
+        {
+            bool cached;
+            if (unopenedPartsByTemplateId.TryGetValue(template.StringId, out cached))
+            {
+                return cached;
+            }
+
+            bool hasUnopenedParts = false;
+            foreach (CraftingPiece piece in template.Pieces)
+            {
+                if (!behavior.IsOpened(piece, template))
+                {
+                    hasUnopenedParts = true;
+                    break;
+                }
+            }
+
+            unopenedPartsByTemplateId[template.StringId] = hasUnopenedParts;
+            return hasUnopenedParts;
         }
 
         public bool ExecuteSmelt(string heroId, string itemId)

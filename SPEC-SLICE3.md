@@ -187,11 +187,17 @@ change what is allowed.
 - Gate2: 2026-07-25 - released via "weiter mit allem"
 - Surface: claude
 - Mode: normal
-- Welle 1: [ ] #1 [ ] #2
-- Welle 2: [ ] #3 [ ] #5
-- Welle 3: [ ] #4 [ ] #6
-- Welle 4: [ ] #7
-- Welle 5: [ ] #8
+- Welle 1: [x] #1 [x] #2
+- Welle 2: [x] #3 [x] #5 (red: 5 failing, 3 passing invariants)
+- Welle 3: [x] #4 [x] #6 (green)
+- Welle 4: [x] #7
+- Welle 5: [x] #8
+- Build: green (MSBuild Debug/x64, 0 warnings, 0 errors), deployed
+- Tests: 33/33 green (25 prior + 8 routing)
+- Note: TODO 4 required restructuring `SmeltPlanner` from smith-major to candidate-major looping.
+  A research-relevant item must be able to skip past a non-preferred smith to reach a
+  `CuriousSmelter` one, which sorting the outer smith loop alone cannot express. Slice 1
+  invariants verified unchanged by its existing tests.
 - AC: see Akzeptanzkriterien
 - Notes:
   - Slice 1 and 2 remain unverified in-game; this slice builds on them at the user's request.

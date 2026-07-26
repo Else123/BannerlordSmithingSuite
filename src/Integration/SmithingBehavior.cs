@@ -204,10 +204,14 @@ namespace SmithingSuite.Integration
             foreach (SmithSnapshot smith in smiths)
             {
                 SmithingLog.Line("  " + smith.Name + ": stamina=" + smith.Stamina + "/" + smith.MaxStamina
-                    + ", smeltEnergyCost=" + smith.SmeltEnergyCost + ", capacity=" + smith.Capacity);
+                    + ", smeltEnergyCost=" + smith.SmeltEnergyCost + ", capacity=" + smith.Capacity
+                    + ", " + DescribePerks(smith));
             }
         }
 
+        // Class/value/template per candidate is what proves AC1/AC2 in the log: research
+        // candidates (unopened template parts) must appear ordered before bulk ones, and within a
+        // class, descending by value - see SmeltPlanner for the policy this log line verifies.
         private static void LogSmeltCandidates(IReadOnlyList<SmeltCandidate> candidates)
         {
             if (!SmithingLog.IsVerbose)
@@ -219,7 +223,9 @@ namespace SmithingSuite.Integration
             foreach (SmeltCandidate candidate in candidates)
             {
                 string lockNote = candidate.IsLocked ? " [LOCKED]" : "";
-                SmithingLog.Line("  " + candidate.Name + " x" + candidate.Count + lockNote);
+                SmithingLog.Line("  " + candidate.Name + " x" + candidate.Count + lockNote
+                    + " [" + CandidateClass(candidate) + ", value=" + candidate.Value
+                    + ", template=" + candidate.TemplateId + "]");
             }
         }
 
@@ -234,9 +240,72 @@ namespace SmithingSuite.Integration
             SmithingLog.Line("Smelt plan: " + plan.Actions.Count + " action(s).");
             foreach (SmeltAction action in plan.Actions)
             {
+                SmithSnapshot smith = FindSmith(smiths, action.HeroId);
+                SmeltCandidate candidate = FindCandidate(candidates, action.ItemId);
                 SmithingLog.Line("  " + HeroDisplayName(smiths, action.HeroId) + " -> "
-                    + ItemDisplayName(candidates, action.ItemId));
+                    + ItemDisplayName(candidates, action.ItemId)
+                    + " (" + DescribeSmeltRoutingReason(smith, candidate) + ")");
             }
+        }
+
+        private static string CandidateClass(SmeltCandidate candidate)
+        {
+            return candidate.TemplateHasUnopenedParts ? "research" : "bulk";
+        }
+
+        // Derived (never guessed) from the candidate's class and whether the CHOSEN smith holds
+        // the matching perk - the plan itself only carries HeroId + ItemId, so this is the only
+        // place that can reconstruct why SmeltPlanner picked this particular smith. Mirrors the
+        // preferred/fallback split in SmeltPlanner.AssignmentOrder: research-relevant candidates
+        // prefer CuriousSmelter, bulk candidates prefer PracticalSmelter, and either falls back to
+        // "preferred smith at capacity" once no perked smith had room left.
+        private static string DescribeSmeltRoutingReason(SmithSnapshot smith, SmeltCandidate candidate)
+        {
+            if (smith == null || candidate == null)
+            {
+                return "?";
+            }
+
+            if (candidate.TemplateHasUnopenedParts)
+            {
+                return smith.HasCuriousSmelter ? "CuriousSmelter preferred" : "fallback - preferred smith at capacity";
+            }
+
+            return smith.HasPracticalSmelter ? "PracticalSmelter preferred" : "fallback - preferred smith at capacity";
+        }
+
+        private static SmithSnapshot FindSmith(IReadOnlyList<SmithSnapshot> smiths, string heroId)
+        {
+            foreach (SmithSnapshot smith in smiths)
+            {
+                if (smith.HeroId == heroId)
+                {
+                    return smith;
+                }
+            }
+
+            return null;
+        }
+
+        private static SmeltCandidate FindCandidate(IReadOnlyList<SmeltCandidate> candidates, string itemId)
+        {
+            foreach (SmeltCandidate candidate in candidates)
+            {
+                if (candidate.ItemId == itemId)
+                {
+                    return candidate;
+                }
+            }
+
+            return null;
+        }
+
+        // Shared by both the smelt- and refine-phase smith-pool log lines so a tester can see all
+        // three perk flags together next to stamina/capacity, without cross-referencing.
+        private static string DescribePerks(SmithSnapshot smith)
+        {
+            return "curiousSmelter=" + smith.HasCuriousSmelter + ", practicalSmelter=" + smith.HasPracticalSmelter
+                + ", practicalRefiner=" + smith.HasPracticalRefiner;
         }
 
         private static void LogSmeltedTotals(Dictionary<string, int> smeltedCountByHero, IReadOnlyList<SmithSnapshot> smiths)
@@ -266,7 +335,8 @@ namespace SmithingSuite.Integration
                 SmithingLog.Line("  " + smith.Name + ": stamina=" + smith.Stamina
                     + ", refineEnergyCost=" + smith.RefineEnergyCost
                     + ", refineCapacity=" + smith.RefineCapacity
-                    + ", formulas=" + smith.RefineFormulas.Count);
+                    + ", formulas=" + smith.RefineFormulas.Count
+                    + ", " + DescribePerks(smith));
                 LogSmithFormulas(smith);
             }
         }
