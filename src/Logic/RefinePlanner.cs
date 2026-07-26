@@ -20,7 +20,14 @@ namespace SmithingSuite.Logic
             // Simulate on a clone - the caller's stock must never be mutated by planning.
             var workingStock = (stock ?? new MaterialStock()).Clone();
 
-            foreach (var smith in smiths ?? new SmithSnapshot[0])
+            // A cheaper refine cost turns the same stamina into more actions, so smiths with
+            // PracticalRefiner get first crack at the shared stock. OrderByDescending is a
+            // stable sort, so smiths without the perk keep their original relative order among
+            // themselves - the refine policy body below is untouched by this reordering.
+            var orderedSmiths = (smiths ?? new SmithSnapshot[0])
+                .OrderByDescending(smith => smith.HasPracticalRefiner);
+
+            foreach (var smith in orderedSmiths)
             {
                 // The per-smith loop is bounded by RefineCapacity (itself Stamina / RefineEnergyCost,
                 // a finite value), and the smith list itself is finite. That bound - not a stock-based

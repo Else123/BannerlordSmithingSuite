@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -12,35 +13,45 @@ namespace SmithingSuite.Logic
     {
         public static SmeltPlan Plan(IReadOnlyList<SmithSnapshot> smiths, IReadOnlyList<SmeltCandidate> candidates)
         {
-            var remainingByItem = (candidates ?? new SmeltCandidate[0])
-                .Where(candidate => !candidate.IsLocked)
-                .Select(candidate => new RemainingCandidate(candidate.ItemId, candidate.Count))
-                .Where(remaining => remaining.Count > 0)
+            var smithList = (smiths ?? new SmithSnapshot[0]).ToList();
+            var freeCapacity = smithList.Select(smith => smith.Capacity).ToArray();
+
+            // Research points accrue per CraftingTemplate and scale with the smelted item's
+            // value, so smelting an item that still advances an unfinished template is strictly
+            // more useful than smelting one that cannot - that beats both roster order and
+            // value. Within a class, descending value wins (more research / better materials),
+            // and ItemId is the final tie-break so the resulting plan is reproducible.
+            var orderedCandidates = (candidates ?? new SmeltCandidate[0])
+                .Where(candidate => !candidate.IsLocked && candidate.Count > 0)
+                .OrderByDescending(candidate => candidate.TemplateHasUnopenedParts)
+                .ThenByDescending(candidate => candidate.Value)
+                .ThenBy(candidate => candidate.ItemId, StringComparer.Ordinal)
                 .ToList();
 
             var actions = new List<SmeltAction>();
 
-            foreach (var smith in smiths ?? new SmithSnapshot[0])
+            foreach (var candidate in orderedCandidates)
             {
-                var stillFreeCapacity = smith.Capacity;
+                var remaining = candidate.Count;
 
-                while (stillFreeCapacity > 0 && remainingByItem.Count > 0)
+                // Research-relevant work prefers a CuriousSmelter (multiplies research gain);
+                // bulk work prefers a PracticalSmelter (cheaper smelts -> more actions from the
+                // same stamina). Neither preference may starve a smith or drop a candidate: once
+                // the preferred smiths are out of capacity, assignment falls through to any
+                // smith that still has some, in roster order.
+                foreach (var smithIndex in AssignmentOrder(smithList, candidate.TemplateHasUnopenedParts))
                 {
-                    var next = remainingByItem[0];
-                    actions.Add(new SmeltAction(smith.HeroId, next.ItemId));
-
-                    next.Count--;
-                    if (next.Count == 0)
+                    while (remaining > 0 && freeCapacity[smithIndex] > 0)
                     {
-                        remainingByItem.RemoveAt(0);
+                        actions.Add(new SmeltAction(smithList[smithIndex].HeroId, candidate.ItemId));
+                        freeCapacity[smithIndex]--;
+                        remaining--;
                     }
 
-                    stillFreeCapacity--;
-                }
-
-                if (remainingByItem.Count == 0)
-                {
-                    break;
+                    if (remaining == 0)
+                    {
+                        break;
+                    }
                 }
             }
 
@@ -48,19 +59,30 @@ namespace SmithingSuite.Logic
         }
 
         /// <summary>
-        /// Mutable per-candidate counter used only while planning; kept separate from the
-        /// immutable <see cref="SmeltCandidate"/> snapshot so the input is never mutated.
+        /// Smith indices in the order a candidate of the given class should be offered to them:
+        /// perk-matched smiths first (stable, roster order), then every other smith (stable,
+        /// roster order) as the fallback - so capacity is never left idle and no smith is
+        /// starved just because it lacks the preferred perk.
         /// </summary>
-        private sealed class RemainingCandidate
+        private static IEnumerable<int> AssignmentOrder(IReadOnlyList<SmithSnapshot> smiths, bool researchRelevant)
         {
-            public string ItemId { get; }
-            public int Count { get; set; }
+            var preferred = new List<int>();
+            var fallback = new List<int>();
 
-            public RemainingCandidate(string itemId, int count)
+            for (var i = 0; i < smiths.Count; i++)
             {
-                ItemId = itemId;
-                Count = count;
+                var hasPreferredPerk = researchRelevant ? smiths[i].HasCuriousSmelter : smiths[i].HasPracticalSmelter;
+                if (hasPreferredPerk)
+                {
+                    preferred.Add(i);
+                }
+                else
+                {
+                    fallback.Add(i);
+                }
             }
+
+            return preferred.Concat(fallback);
         }
     }
 }
