@@ -21,6 +21,9 @@
 
   <ItemGroup>
     <Compile Include="..\..\src\Logic\*.cs" LinkBase="Logic" />
+    <!-- Advisor sources use only System.*, same rationale as Logic above: compile them here too
+         so the engine-free crafting-advisor layer is unit-tested without a game install. -->
+    <Compile Include="..\..\src\Advisor\*.cs" LinkBase="Advisor" />
   </ItemGroup>
 
 </Project>
