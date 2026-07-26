@@ -92,8 +92,11 @@
     <Compile Include="Advisor\DamageKind.cs" />
     <Compile Include="Advisor\DesignCandidate.cs" />
     <Compile Include="Advisor\DesignEvaluation.cs" />
+    <Compile Include="Advisor\DesignOptimizer.cs" />
     <Compile Include="Advisor\IDesignEvaluator.cs" />
     <Compile Include="Advisor\MountedContext.cs" />
+    <Compile Include="Advisor\ScoreWeights.cs" />
+    <Compile Include="Advisor\WeaponScore.cs" />
     <Compile Include="Advisor\WeaponStats.cs" />
     <Compile Include="Integration\ISmithingConnector.cs" />
     <Compile Include="Integration\SmithingConnector.cs" />

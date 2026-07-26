@@ -268,12 +268,15 @@ In-game: AC12-AC15 on the test save.
 - Gate2: 2026-07-25 - released via "weiter mit allem" (Slice 5 keeps its own gate after Slice 4)
 - Surface: claude
 - Mode: normal
-- Welle 1: [ ] #1 (armour formula - BLOCKING)
-- Welle 2: [ ] #2 [ ] #3
-- Welle 3: [ ] #4 [ ] #5
-- Welle 4: [ ] #6
-- Welle 5: [ ] #7
-- Welle 6: [ ] #8
+- Welle 1: [x] #1 (armour formula CLOSED - it is managed code, and it is a blend)
+- Welle 2: [x] #2 [x] #3 (red)
+- Welle 3: [x] #4 (green) [x] #5
+- Welle 4: [x] #6 (red: 5 missing symbols)
+- Welle 5: [x] #7
+- Welle 6: [x] #8 (green)
+- **Slice 4 complete.** Tests 58/58 green; MSBuild Debug/x64 0 warnings, 0 errors; deployed.
+- [GATE] Slice 5 not started - the spec requires Slice 4 to be green **and reviewed** first.
+  The review is still outstanding.
 - Welle 7-10 (Slice 5): [ ] #9 [ ] #10 [ ] #11 [ ] #12
 - AC: see Akzeptanzkriterien
 - Notes:
