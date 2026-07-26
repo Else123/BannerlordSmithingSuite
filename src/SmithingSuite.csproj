@@ -98,6 +98,7 @@
     <Compile Include="Advisor\ScoreWeights.cs" />
     <Compile Include="Advisor\WeaponScore.cs" />
     <Compile Include="Advisor\WeaponStats.cs" />
+    <Compile Include="Integration\EngineDesignEvaluator.cs" />
     <Compile Include="Integration\ISmithingConnector.cs" />
     <Compile Include="Integration\SmithingConnector.cs" />
     <Compile Include="Integration\SmithingBehavior.cs" />
