@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using SmithingSuite.Logic;
 using TaleWorlds.Core;
@@ -26,6 +27,19 @@ namespace SmithingSuite.Integration
 
         private static readonly string LogFilePath = Path.Combine(LogDirectory, "smithingsuite.log");
         private static readonly string RotatedLogFilePath = Path.Combine(LogDirectory, "smithingsuite.log.old");
+
+        // Lines are accumulated here during a run instead of hitting the filesystem per line -
+        // with verbose logging on and a large party, one town-menu click can emit hundreds of
+        // lines, and hundreds of file opens per click is a real stutter risk. EndRun() flushes
+        // this in one operation.
+        private static readonly List<string> _bufferedLines = new List<string>();
+
+        /// <summary>
+        /// Mirrors <see cref="SmithingSuiteConfig.VerboseLogging"/> so callers building an
+        /// expensive diagnostic string (e.g. formatting a material stock or a plan) can guard
+        /// the construction itself, not just the call into this class.
+        /// </summary>
+        public static bool IsVerbose => SmithingSuiteConfig.VerboseLogging;
 
         /// <summary>Appends one timestamped line when VerboseLogging is on.</summary>
         public static void Line(string message)
@@ -134,19 +148,42 @@ namespace SmithingSuite.Integration
             return inputs + " -> " + outputs;
         }
 
-        private static void AppendLine(string line)
+        /// <summary>
+        /// Flushes this run's buffered lines to disk in a single file operation, then clears the
+        /// buffer. MUST be called exactly once at the end of every run - including the early
+        /// "nothing to do" return - via try/finally, otherwise this run's lines are silently
+        /// lost. Trade-off accepted for a diagnostics log: if the process dies mid-run, the
+        /// buffer (and this run's trace) is lost with it rather than being flushed line-by-line.
+        /// </summary>
+        public static void EndRun()
         {
+            if (_bufferedLines.Count == 0)
+            {
+                return;
+            }
+
             try
             {
                 EnsureDirectory();
                 RotateIfTooLarge();
-                File.AppendAllText(LogFilePath, line + Environment.NewLine);
+                File.AppendAllText(LogFilePath, string.Join(Environment.NewLine, _bufferedLines) + Environment.NewLine);
             }
             catch
             {
-                // File I/O must never throw into campaign code - silently drop this line rather
-                // than retry in a loop.
+                // File I/O must never throw into campaign code - silently drop this run's lines
+                // rather than retry in a loop.
             }
+            finally
+            {
+                _bufferedLines.Clear();
+            }
+        }
+
+        private static void AppendLine(string line)
+        {
+            // Buffered in memory only - see EndRun() for why (one file open/close per run
+            // instead of per line) and for where the buffer actually reaches disk.
+            _bufferedLines.Add(line);
         }
 
         private static void EnsureDirectory()

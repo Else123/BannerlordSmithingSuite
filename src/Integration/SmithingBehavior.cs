@@ -83,25 +83,35 @@ namespace SmithingSuite.Integration
             SmithingLog.BeginRun(settlementName);
             SmithingLog.Screen("Smithing Suite: running at " + settlementName + "...");
 
-            IReadOnlyList<SmithSnapshot> smithsBefore = _connector.GetSmiths();
-            Dictionary<string, int> smeltedCountByHero = RunSmeltPhase(smithsBefore);
-
-            // Smelting produces the raw materials refining consumes (ore, wood -> iron chain,
-            // charcoal), so it must run first, and refining must plan against a FRESH
-            // post-smelt snapshot of both stamina and material stock rather than smithsBefore -
-            // both have changed by the time refining plans.
-            Dictionary<string, int> refinedCountByHero = RunRefinePhase();
-
-            if (smeltedCountByHero.Count == 0 && refinedCountByHero.Count == 0)
+            try
             {
-                SmithingLog.Line("Nothing to do this run.");
-                _connector.Report(NothingToDoMessage());
-                return;
-            }
+                IReadOnlyList<SmithSnapshot> smithsBefore = _connector.GetSmiths();
+                Dictionary<string, int> smeltedCountByHero = RunSmeltPhase(smithsBefore);
 
-            IReadOnlyList<SmithSnapshot> smithsAfter = _connector.GetSmiths();
-            LogRunSummary(smithsBefore, smithsAfter, smeltedCountByHero, refinedCountByHero);
-            _connector.Report(BuildSummary(smithsBefore, smithsAfter, smeltedCountByHero, refinedCountByHero));
+                // Smelting produces the raw materials refining consumes (ore, wood -> iron chain,
+                // charcoal), so it must run first, and refining must plan against a FRESH
+                // post-smelt snapshot of both stamina and material stock rather than smithsBefore -
+                // both have changed by the time refining plans.
+                Dictionary<string, int> refinedCountByHero = RunRefinePhase();
+
+                if (smeltedCountByHero.Count == 0 && refinedCountByHero.Count == 0)
+                {
+                    SmithingLog.Line("Nothing to do this run.");
+                    _connector.Report(NothingToDoMessage());
+                    return;
+                }
+
+                IReadOnlyList<SmithSnapshot> smithsAfter = _connector.GetSmiths();
+                LogRunSummary(smithsBefore, smithsAfter, smeltedCountByHero, refinedCountByHero);
+                _connector.Report(BuildSummary(smithsBefore, smithsAfter, smeltedCountByHero, refinedCountByHero));
+            }
+            finally
+            {
+                // Flushes this run's buffered trace to disk exactly once. try/finally so the
+                // early "nothing to do" return above - and any exception - still flushes instead
+                // of silently losing this run's lines (see SmithingLog.EndRun).
+                SmithingLog.EndRun();
+            }
         }
 
         private Dictionary<string, int> RunSmeltPhase(IReadOnlyList<SmithSnapshot> smiths)
@@ -185,6 +195,11 @@ namespace SmithingSuite.Integration
 
         private static void LogSmithPool(IReadOnlyList<SmithSnapshot> smiths)
         {
+            if (!SmithingLog.IsVerbose)
+            {
+                return;
+            }
+
             SmithingLog.Line("Smith pool (" + smiths.Count + "):");
             foreach (SmithSnapshot smith in smiths)
             {
@@ -195,6 +210,11 @@ namespace SmithingSuite.Integration
 
         private static void LogSmeltCandidates(IReadOnlyList<SmeltCandidate> candidates)
         {
+            if (!SmithingLog.IsVerbose)
+            {
+                return;
+            }
+
             SmithingLog.Line("Smelt candidates (" + candidates.Count + "):");
             foreach (SmeltCandidate candidate in candidates)
             {
@@ -206,6 +226,11 @@ namespace SmithingSuite.Integration
         private static void LogSmeltPlan(SmeltPlan plan, IReadOnlyList<SmithSnapshot> smiths,
             IReadOnlyList<SmeltCandidate> candidates)
         {
+            if (!SmithingLog.IsVerbose)
+            {
+                return;
+            }
+
             SmithingLog.Line("Smelt plan: " + plan.Actions.Count + " action(s).");
             foreach (SmeltAction action in plan.Actions)
             {
@@ -216,6 +241,11 @@ namespace SmithingSuite.Integration
 
         private static void LogSmeltedTotals(Dictionary<string, int> smeltedCountByHero, IReadOnlyList<SmithSnapshot> smiths)
         {
+            if (!SmithingLog.IsVerbose)
+            {
+                return;
+            }
+
             SmithingLog.Line("Smelted totals:");
             foreach (KeyValuePair<string, int> entry in smeltedCountByHero)
             {
@@ -225,6 +255,11 @@ namespace SmithingSuite.Integration
 
         private static void LogRefineSmithPool(IReadOnlyList<SmithSnapshot> smiths)
         {
+            if (!SmithingLog.IsVerbose)
+            {
+                return;
+            }
+
             SmithingLog.Line("Smith pool (" + smiths.Count + "):");
             foreach (SmithSnapshot smith in smiths)
             {
@@ -241,6 +276,11 @@ namespace SmithingSuite.Integration
         // Iron3->Iron4 entry in this list.
         private static void LogSmithFormulas(SmithSnapshot smith)
         {
+            if (!SmithingLog.IsVerbose)
+            {
+                return;
+            }
+
             for (int i = 0; i < smith.RefineFormulas.Count; i++)
             {
                 SmithingLog.Line("    [" + i + "] " + SmithingLog.Describe(smith.RefineFormulas[i]));
@@ -249,6 +289,11 @@ namespace SmithingSuite.Integration
 
         private static void LogRefinePlan(RefinePlan plan, IReadOnlyList<SmithSnapshot> smiths)
         {
+            if (!SmithingLog.IsVerbose)
+            {
+                return;
+            }
+
             SmithingLog.Line("Refine plan: " + plan.Actions.Count + " action(s).");
             foreach (RefineAction action in plan.Actions)
             {
@@ -259,6 +304,11 @@ namespace SmithingSuite.Integration
 
         private static void LogMaterialStock(string label, MaterialStock stock)
         {
+            if (!SmithingLog.IsVerbose)
+            {
+                return;
+            }
+
             var parts = new List<string>(MaterialOrdinalCount);
             for (int ordinal = 0; ordinal < MaterialOrdinalCount; ordinal++)
             {
@@ -272,6 +322,11 @@ namespace SmithingSuite.Integration
             IReadOnlyList<SmithSnapshot> smithsAfter, Dictionary<string, int> smeltedCountByHero,
             Dictionary<string, int> refinedCountByHero)
         {
+            if (!SmithingLog.IsVerbose)
+            {
+                return;
+            }
+
             SmithingLog.Section("RUN SUMMARY");
 
             Dictionary<string, int> staminaBeforeByHero = BuildStaminaBeforeByHero(smithsBefore);

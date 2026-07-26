@@ -208,16 +208,28 @@ namespace SmithingSuite.Integration
             }
 
             Crafting.RefiningFormula formula = formulas[formulaIndex];
-            string description = DescribeFormula(formulaIndex, formula);
+            // Built only when it will actually be read: LogRefineAttempt is a no-op when
+            // verbose logging is off, so building this description eagerly on every refine
+            // execution would be wasted work in the common (non-verbose) case.
+            string description = SmithingLog.IsVerbose ? DescribeFormula(formulaIndex, formula) : null;
 
             // The plan was computed against a snapshot; the world may have moved since (another
-            // action already spent this hero's stamina), so re-check against live state rather
-            // than trusting the plan blindly - same defensive pattern as ExecuteSmelt.
+            // action already spent this hero's stamina or consumed materials another action
+            // just produced), so re-check stamina AND materials against live state rather than
+            // trusting the plan blindly - same defensive pattern as ExecuteSmelt, which
+            // re-resolves its item against the live roster instead of trusting the plan.
             int refineEnergyCost = Campaign.Current.Models.SmithingModel.GetEnergyCostForRefining(ref formula, hero);
             int stamina = behavior.GetHeroCraftingStamina(hero);
             if (stamina < refineEnergyCost)
             {
                 LogRefineAttempt(heroId, formulaIndex, description, false, "stamina " + stamina + " < cost " + refineEnergyCost);
+                return false;
+            }
+
+            ItemRoster materialRoster = PartyBase.MainParty?.MobileParty?.ItemRoster;
+            if (materialRoster == null || !HasEnoughMaterials(formula, materialRoster))
+            {
+                LogRefineAttempt(heroId, formulaIndex, description, false, "insufficient materials in roster");
                 return false;
             }
 
@@ -304,6 +316,11 @@ namespace SmithingSuite.Integration
         // low) - the behavior only ever sees the bool return value.
         private static void LogSmeltAttempt(string heroId, string itemId, bool success, string failReason)
         {
+            if (!SmithingLog.IsVerbose)
+            {
+                return;
+            }
+
             string status = success ? "OK  " : "FAIL";
             string line = "  " + status + " " + heroId + " -> " + itemId;
             if (!success && failReason != null)
@@ -316,6 +333,11 @@ namespace SmithingSuite.Integration
 
         private static void LogRefineAttempt(string heroId, int formulaIndex, string description, bool success, string failReason)
         {
+            if (!SmithingLog.IsVerbose)
+            {
+                return;
+            }
+
             string status = success ? "OK  " : "FAIL";
             string line = "  " + status + " " + heroId + " -> [" + formulaIndex + "] " + description;
             if (!success && failReason != null)
@@ -353,6 +375,34 @@ namespace SmithingSuite.Integration
             }
 
             return snapshots;
+        }
+
+        // Honours vanilla's "Input2Count == 0 means no second input" convention (see
+        // RefineFormulaSnapshot.HasSecondInput) rather than requiring a phantom zero count.
+        private static bool HasEnoughMaterials(Crafting.RefiningFormula formula, ItemRoster roster)
+        {
+            if (!HasEnoughMaterial(roster, formula.Input1, formula.Input1Count))
+            {
+                return false;
+            }
+
+            if (formula.Input2Count > 0 && !HasEnoughMaterial(roster, formula.Input2, formula.Input2Count))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        private static bool HasEnoughMaterial(ItemRoster roster, CraftingMaterials material, int requiredCount)
+        {
+            ItemObject materialItem = Campaign.Current.Models.SmithingModel.GetCraftingMaterialItem(material);
+            if (materialItem == null)
+            {
+                return false;
+            }
+
+            return CountItemInRoster(roster, materialItem) >= requiredCount;
         }
 
         private static int CountItemInRoster(ItemRoster roster, ItemObject item)

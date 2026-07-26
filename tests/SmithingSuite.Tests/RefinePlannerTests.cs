@@ -119,19 +119,40 @@ namespace SmithingSuite.Tests
         }
 
         [Fact]
-        public void Plan_PlansWoodToCharcoalBeforeIronFormulaWhenCharcoalIsZero()
+        public void Plan_PrefersCharcoalProducerWhenCharcoalIsBelowRemainingSmithCapacity()
         {
-            // Formulas are deliberately listed iron-first on the smith to prove the ordering
-            // comes from the charcoal-aware policy, not from list order.
+            // Charcoal (1) is already enough to make ore->iron1 applicable, but it is below this
+            // smith's remaining capacity (2), so the smith would run dry before finishing its
+            // refines - the charcoal producer must be picked first even though ore->iron1 is the
+            // higher tier and would otherwise win. Formulas are deliberately listed iron-first to
+            // prove the ordering comes from the charcoal-aware policy, not from list order.
             var oreToIron1 = OreToIron1(index: 0);
             var woodToCharcoal = WoodToCharcoal(index: 1);
             var smith = Smith("hero-1", stamina: 12, refineEnergyCost: 6, oreToIron1, woodToCharcoal);
-            var stock = Stock((IronOre, 1), (Wood, 2));
+            var stock = Stock((IronOre, 10), (Charcoal, 1), (Wood, 1000));
 
             var plan = RefinePlanner.Plan(new[] { smith }, stock, new MaterialStock());
 
             Assert.NotEmpty(plan.Actions);
             Assert.Equal(1, plan.Actions[0].FormulaIndex);
+        }
+
+        [Fact]
+        public void Plan_PrefersHighestTierWhenCharcoalCoversRemainingSmithCapacity()
+        {
+            // Same formulas and same remaining capacity (2) as the low-charcoal case above, but
+            // charcoal (10) now comfortably covers it - the charcoal-aware branch must NOT fire,
+            // so the normal highest-tier preference picks ore->iron1 (tier 1) over the
+            // charcoal-only wood->charcoal formula (tier 0).
+            var oreToIron1 = OreToIron1(index: 0);
+            var woodToCharcoal = WoodToCharcoal(index: 1);
+            var smith = Smith("hero-1", stamina: 12, refineEnergyCost: 6, oreToIron1, woodToCharcoal);
+            var stock = Stock((IronOre, 10), (Charcoal, 10), (Wood, 1000));
+
+            var plan = RefinePlanner.Plan(new[] { smith }, stock, new MaterialStock());
+
+            Assert.NotEmpty(plan.Actions);
+            Assert.Equal(0, plan.Actions[0].FormulaIndex);
         }
 
         [Fact]
@@ -213,8 +234,12 @@ namespace SmithingSuite.Tests
 
             var plan = RefinePlanner.Plan(smiths, stock, new MaterialStock());
 
+            // Materials are abundant and every iteration finds an applicable formula (the cycle
+            // regenerates its own Iron1, and charcoal starts far above any smith's remaining
+            // capacity so the Finding-1 charcoal rule never overrides tier preference here), so
+            // the planner should use the capacity exactly - a premature stop must fail this.
             var totalCapacity = smiths.Sum(s => s.RefineCapacity);
-            Assert.True(plan.Actions.Count <= totalCapacity);
+            Assert.Equal(totalCapacity, plan.Actions.Count);
         }
     }
 }

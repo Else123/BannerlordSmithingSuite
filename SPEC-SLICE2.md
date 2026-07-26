@@ -65,8 +65,16 @@ order; `DoRefinement` does the work and deducts the stamina.
 Aggressive by default, per the user's stated play style, but **charcoal-aware** so it cannot
 strand itself:
 
-1. **Feed the charcoal pipeline when charcoal is the binding constraint.** If no iron formula is
-   applicable purely because charcoal is 0, and a wood->charcoal formula is applicable, do that first.
+1. **Keep the charcoal pipeline ahead of demand.** Prefer an applicable charcoal-producing formula
+   while `charcoal < remaining refine capacity of this smith`. Each iron step burns exactly one
+   charcoal, so charcoal below the number of refines still available means the smith will run dry
+   mid-run; top it up first, then fall back to the tier preference.
+
+   *Revised 2026-07-25 after code review.* The original wording ("act when charcoal is 0") was a
+   no-op: every iron formula requires `Charcoal >= 1`, so at zero charcoal `MaterialStock.CanApply`
+   already excludes them all and the wood->charcoal formula is the only candidate left. The branch
+   decided nothing, and the test that claimed to prove it only proved ordinary availability
+   filtering. Charcoal does not fail suddenly - it drains - which is what the rule now models.
 2. **Otherwise refine as far up the tier chain as the smith's perks allow**, preferring the
    highest-tier applicable formula (that is what "refine aggressively" means in practice: iron
    ends up as high-tier steel rather than sitting as Iron1).

@@ -13,6 +13,10 @@ namespace SmithingSuite.Tests
         private static SmithSnapshot Smith(int stamina, int smeltEnergyCost)
             => new SmithSnapshot("hero-1", name: "hero-1", stamina: stamina, maxStamina: 100, smeltEnergyCost: smeltEnergyCost);
 
+        private static SmithSnapshot SmithForRefine(int stamina, int refineEnergyCost)
+            => new SmithSnapshot("hero-1", name: "hero-1", stamina: stamina, maxStamina: 100,
+                smeltEnergyCost: 10, refineEnergyCost: refineEnergyCost, refineFormulas: null);
+
         [Fact]
         public void Capacity_IsZero_WhenSmeltEnergyCostIsZero()
         {
@@ -46,6 +50,32 @@ namespace SmithingSuite.Tests
             var smith = Smith(stamina: 25, smeltEnergyCost: 10);
 
             Assert.Equal(2, smith.Capacity);
+        }
+
+        [Fact]
+        public void RefineCapacity_IsZero_WhenRefineEnergyCostIsZero()
+        {
+            // Same anti-"infinite refines via division by zero" guard as Capacity, applied to
+            // the refine cost.
+            var smith = SmithForRefine(stamina: 100, refineEnergyCost: 0);
+
+            Assert.Equal(0, smith.RefineCapacity);
+        }
+
+        [Fact]
+        public void RefineCapacity_IsZero_WhenRefineEnergyCostIsNegative()
+        {
+            var smith = SmithForRefine(stamina: 100, refineEnergyCost: -6);
+
+            Assert.Equal(0, smith.RefineCapacity);
+        }
+
+        [Fact]
+        public void RefineCapacity_UsesIntegerDivision_TwentyFiveStaminaAtCostSixGivesFourNotFourPointOhSixSeven()
+        {
+            var smith = SmithForRefine(stamina: 25, refineEnergyCost: 6);
+
+            Assert.Equal(4, smith.RefineCapacity);
         }
     }
 }
