@@ -1,4 +1,5 @@
 using SmithingSuite.Integration;
+using SmithingSuite.UI;
 using TaleWorlds.CampaignSystem;
 using TaleWorlds.Core;
 using TaleWorlds.Library;
@@ -16,6 +17,16 @@ namespace SmithingSuite
     /// </summary>
     public class SmithingSuiteSubModule : MBSubModuleBase
     {
+        protected override void OnSubModuleLoad()
+        {
+            base.OnSubModuleLoad();
+
+            // UIExtenderEx registration is pure reflection + flag flips, safe this early (SPEC-
+            // SLICE4-5.md Slice 5, TODO 11) - guarded internally so a missing/incompatible
+            // UIExtenderEx cannot stop the rest of the mod from loading (AC15).
+            UiExtensionBridge.Register();
+        }
+
         protected override void InitializeGameStarter(Game game, IGameStarter gameStarterObject)
         {
             if (game.GameType is Campaign)

@@ -277,10 +277,19 @@ In-game: AC12-AC15 on the test save.
 - **Slice 4 complete.** Tests 58/58 green; MSBuild Debug/x64 0 warnings, 0 errors; deployed.
 - [GATE] Slice 5 not started - the spec requires Slice 4 to be green **and reviewed** first.
   The review is still outstanding.
-- Welle 7-10 (Slice 5): [ ] #9 [ ] #10 [ ] #11 [ ] #12
+- Welle 7-10 (Slice 5): [x] #9 [x] #10 [x] #11 [x] #12 (implemented; AC12-AC15 still need manual
+  in-game verification on the test save - not run this session)
 - AC: see Akzeptanzkriterien
 - Notes:
   - The armour formula is currently community-sourced and UNVERIFIED. TODO 1 exists precisely so
     the score is not built on it unchecked.
   - No public source quantifies speed-vs-damage weighting; the composite weights are declared
     opinion and must stay user-tunable (Slice 6).
+  - TODO 11/12: `InsertType.Append` at `//Widget[@Id='InnerPanel']/Children` (as originally
+    sketched) was verified via decompiling `Bannerlord.UIExtenderEx.Components.PrefabComponent`
+    to insert the panel as a SIBLING of `<Children>`, not inside it - very likely invisible in
+    practice, since every vanilla prefab nests widgets inside `<Children>` with no exceptions.
+    Implemented with `InsertType.Child` (Index = int.MaxValue, i.e. append-at-end) at the same
+    XPath instead - see the comment on `AdvisorPanelPrefab`. Scale steps (80/90/100/110/120%) are
+    a labelled opinion default, same status as `ScoreWeights` - vanilla exposes no scale slider
+    to mirror, per `WeaponDesignElement`/`CraftingPiece` (decompiled, no min/max found).

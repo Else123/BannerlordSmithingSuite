@@ -23,6 +23,9 @@
     <!-- MCM (Mod Configuration Menu) workshop assembly, derived from the Steam library - same
          Workshop id (2859238197) and derivation as the AutoTrader's Directory.Build.props. -->
     <McmBinPath>$(BannerlordPath)\..\..\workshop\content\261550\2859238197\bin\Win64_Shipping_Client</McmBinPath>
+    <!-- Bannerlord.UIExtenderEx workshop assembly (Workshop id 2859222409), same derivation as
+         McmBinPath above - see SPEC-SLICE4-5.md TODO 10. -->
+    <UIExtenderBinPath>$(BannerlordPath)\..\..\workshop\content\261550\2859222409\bin\Win64_Shipping_Client</UIExtenderBinPath>
   </PropertyGroup>
 
   <Target Name="ValidateBannerlordPath" BeforeTargets="BeforeBuild">

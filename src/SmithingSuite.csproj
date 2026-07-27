@@ -83,6 +83,11 @@
       <HintPath>$(McmBinPath)\MCMv5.dll</HintPath>
       <Private>False</Private>
     </Reference>
+    <!-- UIExtenderEx - workshop assembly, see UIExtenderBinPath in Directory.Build.props. -->
+    <Reference Include="Bannerlord.UIExtenderEx">
+      <HintPath>$(UIExtenderBinPath)\Bannerlord.UIExtenderEx.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Logic\SmithSnapshot.cs" />
@@ -112,9 +117,15 @@
     <Compile Include="SmithingSuiteSubModule.cs" />
     <Compile Include="SmithingSuiteConfig.cs" />
     <Compile Include="SmithingSuiteMcmSettings.cs" />
+    <Compile Include="UI\AdvisorPanelPrefab.cs" />
+    <Compile Include="UI\UiExtensionBridge.cs" />
+    <Compile Include="UI\WeaponDesignAdvisorMixin.cs" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="SubModule.xml">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="UI\Prefabs\AdvisorPanel.xml">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
@@ -124,10 +135,13 @@
     <PropertyGroup>
       <ModOutputPath>$(BannerlordModulesPath)\SmithingSuite</ModOutputPath>
     </PropertyGroup>
-    <MakeDir Directories="$(ModOutputPath);$(ModOutputPath)\bin\Win64_Shipping_Client" />
+    <MakeDir Directories="$(ModOutputPath);$(ModOutputPath)\bin\Win64_Shipping_Client;$(ModOutputPath)\GUI\Prefabs" />
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ModOutputPath)\bin\Win64_Shipping_Client" />
     <Copy SourceFiles="$(TargetDir)$(TargetName).pdb" DestinationFolder="$(ModOutputPath)\bin\Win64_Shipping_Client" Condition="Exists('$(TargetDir)$(TargetName).pdb')" />
     <Copy SourceFiles="$(ProjectDir)SubModule.xml" DestinationFiles="$(ModOutputPath)\SubModule.xml" />
+    <!-- The advisor panel's XML fragment - PrefabExtensionFileName (AdvisorPanelPrefab.cs) searches
+         this module's GUI folder recursively at runtime, so it must be deployed alongside the DLL. -->
+    <Copy SourceFiles="$(ProjectDir)UI\Prefabs\AdvisorPanel.xml" DestinationFolder="$(ModOutputPath)\GUI\Prefabs" />
     <Message Text="Deployed Smithing Suite to $(ModOutputPath)" Importance="high" />
   </Target>
 </Project>

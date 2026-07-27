@@ -1,0 +1,57 @@
+<!--
+  Smithing Suite crafting advisor panel (SPEC-SLICE4-5.md Slice 5, TODO 12).
+
+  This is a UIExtenderEx Prefabs2 insertion FRAGMENT, not a standalone prefab: it is loaded via
+  [PrefabExtensionFileName] (see AdvisorPanelPrefab.cs), which takes this file's DOCUMENT ELEMENT
+  directly as the node to insert - so the root here must be the widget itself, with no surrounding
+  <Prefab>/<Window> wrapper the way a normal top-level prefab file would have.
+
+  No explicit DataSource: this is inserted inside WeaponDesignVM's own "InnerPanel"
+  (DataSource="{WeaponDesign}"), and UIExtenderEx merges WeaponDesignAdvisorMixin's [DataSourceProperty]
+  members into that same view model at runtime, so every @AdvisorXxx binding below resolves against
+  the ambient WeaponDesignVM + mixin instance without needing its own DataSource attribute.
+-->
+<Widget Id="SmithingSuiteAdvisorPanel" WidthSizePolicy="Fixed" HeightSizePolicy="Fixed" SuggestedWidth="320" SuggestedHeight="420" HorizontalAlignment="Left" VerticalAlignment="Top" PositionXOffset="-330" PositionYOffset="38" IsVisible="@AdvisorIsVisible">
+  <Children>
+
+    <!--Panel background - matches the dark crafting screen palette rather than importing a brush that may not exist.-->
+    <Widget WidthSizePolicy="StretchToParent" HeightSizePolicy="StretchToParent" Sprite="BlankWhiteSquare_9" Color="#1A140FE6" />
+
+    <ListPanel WidthSizePolicy="StretchToParent" HeightSizePolicy="CoverChildren" StackLayout.LayoutMethod="VerticalTopToBottom" MarginLeft="10" MarginRight="10" MarginTop="8" MarginBottom="8">
+      <Children>
+
+        <TextWidget WidthSizePolicy="StretchToParent" HeightSizePolicy="CoverChildren" Text="Crafting Advisor" Brush="Crafting.WeaponType.Text" Brush.FontSize="20" />
+
+        <TextWidget WidthSizePolicy="StretchToParent" HeightSizePolicy="CoverChildren" MarginTop="4" Text="@AdvisorVerdictText" Brush="Crafting.Property.Name.Text" Brush.FontSize="16" Brush.TextHorizontalAlignment="Left" />
+
+        <!--Named, explained score axes (AC10) - one row per WeaponScore.Axes entry.-->
+        <ListPanel DataSource="{AdvisorAxes}" WidthSizePolicy="StretchToParent" HeightSizePolicy="CoverChildren" MarginTop="8" StackLayout.LayoutMethod="VerticalTopToBottom">
+          <ItemTemplate>
+            <ListPanel WidthSizePolicy="StretchToParent" HeightSizePolicy="CoverChildren" MarginTop="3" StackLayout.LayoutMethod="HorizontalLeftToRight">
+              <Children>
+                <TextWidget WidthSizePolicy="Fixed" SuggestedWidth="110" HeightSizePolicy="CoverChildren" Text="@Name" Brush="Crafting.Property.Name.Text" Brush.FontSize="15" />
+                <TextWidget WidthSizePolicy="Fixed" SuggestedWidth="55" HeightSizePolicy="CoverChildren" Text="@ValueText" Brush="Crafting.Property.Value.Text" Brush.FontSize="15" />
+              </Children>
+            </ListPanel>
+          </ItemTemplate>
+        </ListPanel>
+
+        <TextWidget WidthSizePolicy="StretchToParent" HeightSizePolicy="CoverChildren" MarginTop="8" Text="@AdvisorSuggestionText" Brush="Crafting.Property.Name.Text" Brush.FontSize="14" Brush.TextHorizontalAlignment="Left" IsVisible="@AdvisorHasSuggestion" />
+
+        <ButtonWidget WidthSizePolicy="StretchToParent" HeightSizePolicy="Fixed" SuggestedHeight="34" MarginTop="8" Command.Click="ExecuteSuggestBest" IsEnabled="@AdvisorIsSuggestButtonEnabled" Brush="Crafting.Order.CraftingModeButton" DoNotPassEventsToChildren="true">
+          <Children>
+            <TextWidget WidthSizePolicy="StretchToParent" HeightSizePolicy="StretchToParent" Text="Suggest Best" Brush="Crafting.Mode.Selection.Text" Brush.TextHorizontalAlignment="Center" />
+          </Children>
+        </ButtonWidget>
+
+        <ButtonWidget WidthSizePolicy="StretchToParent" HeightSizePolicy="Fixed" SuggestedHeight="28" MarginTop="4" Command.Click="ExecuteToggleMountedContext" Brush="Crafting.Order.CraftingModeButton" DoNotPassEventsToChildren="true">
+          <Children>
+            <TextWidget WidthSizePolicy="StretchToParent" HeightSizePolicy="StretchToParent" Text="@AdvisorContextButtonText" Brush="Crafting.Mode.Selection.Text" Brush.TextHorizontalAlignment="Center" />
+          </Children>
+        </ButtonWidget>
+
+      </Children>
+    </ListPanel>
+
+  </Children>
+</Widget>

@@ -103,7 +103,25 @@ namespace SmithingSuite.Integration
                 return UnusableEvaluation;
             }
 
-            var stats = new WeaponStats(
+            var stats = ToWeaponStats(weapon, item);
+
+            int difficulty = Campaign.Current.Models.SmithingModel.CalculateWeaponDesignDifficulty(design);
+
+            return new DesignEvaluation(stats, difficulty);
+        }
+
+        /// <summary>
+        /// Maps engine-computed weapon/item numbers into the engine-free <see cref="WeaponStats"/>
+        /// carrier. Internal (not private) so <c>UI.WeaponDesignAdvisorMixin</c>'s cheap per-frame
+        /// refresh - which reads <c>WeaponDesignVM.CraftedItemObject</c> directly instead of calling
+        /// <c>Crafting.GenerateItem</c> - can reuse the exact same mapping this evaluator uses for its
+        /// own (expensive) generate-and-evaluate path, rather than a second copy that could silently
+        /// drift out of sync (e.g. the <see cref="DamageTypes.Invalid"/> handling in
+        /// <see cref="MapDamageType"/>).
+        /// </summary>
+        internal static WeaponStats ToWeaponStats(WeaponComponentData weapon, ItemObject item)
+        {
+            return new WeaponStats(
                 weapon.SwingSpeed,
                 weapon.SwingDamage,
                 MapDamageType(weapon.SwingDamageType),
@@ -115,10 +133,6 @@ namespace SmithingSuite.Integration
                 item.Weight,
                 (int)item.Tier,
                 item.Value);
-
-            int difficulty = Campaign.Current.Models.SmithingModel.CalculateWeaponDesignDifficulty(design);
-
-            return new DesignEvaluation(stats, difficulty);
         }
 
         /// <summary>
