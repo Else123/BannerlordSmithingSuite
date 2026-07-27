@@ -8,8 +8,9 @@ using TaleWorlds.MountAndBlade;
 namespace SmithingSuite
 {
     /// <summary>
-    /// Module entry point. Registers <see cref="SmithingBehavior"/> for campaign games -
-    /// nothing else in Slice 1 (no tick loop, no hotkey, no MCM).
+    /// Module entry point. Registers <see cref="SmithingBehavior"/> (the town-menu smithing run)
+    /// and <see cref="TravelStaminaBehavior"/> (Slice 6's hourly travel-recovery balance change)
+    /// for campaign games. Still no MCM - see SPEC-SLICE6.md TODO 6.
     /// </summary>
     public class SmithingSuiteSubModule : MBSubModuleBase
     {
@@ -19,6 +20,7 @@ namespace SmithingSuite
             {
                 CampaignGameStarter campaignGameStarter = (CampaignGameStarter)gameStarterObject;
                 campaignGameStarter.AddBehavior(new SmithingBehavior(new SmithingConnector()));
+                campaignGameStarter.AddBehavior(new TravelStaminaBehavior());
             }
         }
 

@@ -32,5 +32,28 @@ namespace SmithingSuite
         /// planning. Slice 6's MCM will expose this as "Production: SmeltStaminaSharePercent".
         /// </summary>
         public static int SmeltStaminaSharePercent { get; set; } = 50;
+
+        /// <summary>
+        /// When true, <see cref="Integration.TravelStaminaBehavior"/> tops up the player party's
+        /// heroes' crafting stamina every in-game hour while they are travelling (outside any
+        /// settlement) - vanilla only regenerates this stamina for heroes standing in a
+        /// settlement. This is the mod's FIRST deliberate departure from vanilla economics (every
+        /// earlier slice deliberately avoided changing them); the user found the vanilla
+        /// restriction unmotivated ("Stamina sollte auch generiert werden, wenn man von A nach B
+        /// reist") and asked for it, on the explicit condition that it stays switchable - see
+        /// SPEC-SLICE6.md section C. Default ON per the user's request (2026-07-26). Slice 6's
+        /// MCM will expose this as "Travel: TravelStaminaEnabled".
+        /// </summary>
+        public static bool TravelStaminaEnabled { get; set; } = true;
+
+        /// <summary>
+        /// Multiplier applied to the vanilla-mirrored hourly recovery rate granted while
+        /// travelling (see <see cref="TravelStaminaEnabled"/>). 1.0 (default) means travelling
+        /// recovers stamina at exactly the same rate resting in a settlement does; values above
+        /// or below that scale the balance change up or down without touching the underlying
+        /// formula. Read through <see cref="Integration.TravelStaminaBehavior"/>. Slice 6's MCM
+        /// will expose this as "Travel: TravelStaminaMultiplier" (0.0-2.0).
+        /// </summary>
+        public static float TravelStaminaMultiplier { get; set; } = 1.0f;
     }
 }

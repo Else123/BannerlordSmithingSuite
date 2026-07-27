@@ -103,6 +103,7 @@
     <Compile Include="Integration\SmithingConnector.cs" />
     <Compile Include="Integration\SmithingBehavior.cs" />
     <Compile Include="Integration\SmithingLog.cs" />
+    <Compile Include="Integration\TravelStaminaBehavior.cs" />
     <Compile Include="SmithingSuiteSubModule.cs" />
     <Compile Include="SmithingSuiteConfig.cs" />
   </ItemGroup>

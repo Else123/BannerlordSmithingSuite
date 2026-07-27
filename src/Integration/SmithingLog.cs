@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using SmithingSuite.Logic;
+using TaleWorlds.CampaignSystem;
 using TaleWorlds.Core;
 using TaleWorlds.Library;
 
@@ -64,9 +65,9 @@ namespace SmithingSuite.Integration
         }
 
         /// <summary>
-        /// Starts a run block: a blank line, a rule, and a UTC + local timestamp with the
-        /// settlement name, so one run is easy to find when the file has been appended to many
-        /// times across a play session.
+        /// Starts a run block: a blank line, a rule, and a UTC + local timestamp plus the
+        /// in-game campaign date/time, with the settlement name, so one run is easy to find when
+        /// the file has been appended to many times across a play session.
         /// </summary>
         public static void BeginRun(string settlementName)
         {
@@ -78,8 +79,36 @@ namespace SmithingSuite.Integration
             AppendLine(string.Empty);
             AppendLine("========================================================================");
             AppendLine("Run started " + DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss") + " UTC / "
-                + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " local - settlement: " + settlementName);
+                + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " local / campaign time "
+                + DescribeCampaignTime() + " - settlement: " + settlementName);
             AppendLine("========================================================================");
+        }
+
+        // Wall-clock timestamps alone cannot tell a reader whether two runs a few seconds apart
+        // also span hours of in-game time (stamina legitimately regenerated) or none at all
+        // (stamina was simply never consumed) - see SPEC-SLICE6.md finding 2. CampaignTime.Now
+        // reads Campaign.Current.MapTimeTracker.Now, so it would throw a NullReferenceException
+        // outside an active campaign (e.g. from the main menu); guard explicitly rather than let
+        // that happen, per this class's never-throw contract. CampaignTime's own ToString() is
+        // the simplest readable rendering that actually exists (day/season/year), so it is used
+        // as-is instead of reinventing a format from GetYear/GetSeasonOfYear/GetDayOfSeason.
+        private static string DescribeCampaignTime()
+        {
+            try
+            {
+                if (Campaign.Current == null)
+                {
+                    return "?";
+                }
+
+                return CampaignTime.Now.ToString();
+            }
+            catch
+            {
+                // Diagnostics must never break the campaign - fall back to "unknown" rather than
+                // let a formatting/localization edge case propagate.
+                return "?";
+            }
         }
 
         /// <summary>Short user-facing message, shown when LogToScreen is on.</summary>
