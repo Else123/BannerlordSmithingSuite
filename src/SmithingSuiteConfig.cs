@@ -55,5 +55,16 @@ namespace SmithingSuite
         /// will expose this as "Travel: TravelStaminaMultiplier" (0.0-2.0).
         /// </summary>
         public static float TravelStaminaMultiplier { get; set; } = 1.0f;
+
+        /// <summary>
+        /// Hard cap on <see cref="Advisor.IDesignEvaluator.Evaluate"/> calls per
+        /// <see cref="Advisor.DesignOptimizer.Optimize"/> search - see
+        /// <see cref="Advisor.OptimizerOptions.EvaluationBudget"/>. Not yet read by any caller
+        /// (the advisor's inline UI is Slice 5 TODOs 10-12, out of scope here); Slice 6 only
+        /// exposes it in MCM ahead of that UI so the value is already user-configurable and the
+        /// two land in the same change. Default 500 is a middle ground against the search sizes
+        /// exercised by <c>DesignOptimizerTests</c> (100-200 for typical cases).
+        /// </summary>
+        public static int AdvisorEvaluationBudget { get; set; } = 500;
     }
 }

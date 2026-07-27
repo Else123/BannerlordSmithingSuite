@@ -78,6 +78,11 @@ namespace SmithingSuite.Integration
 
         private void SmithingTownConsequence(MenuCallbackArgs args)
         {
+            // Bridged on each use rather than cached, exactly like the AutoTrader does: a value
+            // the player changes in MCM mid-session must take effect on the very next run without
+            // a restart (SPEC-SLICE6.md AC10). Safe no-op if MCM has not registered the page yet.
+            SmithingSuiteMcmSettings.Apply();
+
             string settlementName = Settlement.CurrentSettlement != null && Settlement.CurrentSettlement.Name != null
                 ? Settlement.CurrentSettlement.Name.ToString()
                 : "?";

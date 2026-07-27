@@ -26,6 +26,22 @@ namespace SmithingSuite.Advisor
             HandlingWeight = handlingWeight;
         }
 
+        // Mutable defaults rather than literals baked into ForContext, so Slice 6's MCM bridge
+        // (SmithingSuiteMcmSettings.Apply()) can overwrite the player's chosen blend on each use,
+        // the same way it bridges every other setting into a plain static holder - without
+        // ForContext's callers needing to know MCM exists. Values below are the original
+        // opinionated defaults (see ForContext's doc) and are exactly what every existing test
+        // still gets when MCM has never run.
+        public static float OnFootEffectiveDamageWeight = 1.0f;
+        public static float OnFootAttackSpeedWeight = 1.0f;
+        public static float OnFootReachWeight = 0.2f;
+        public static float OnFootHandlingWeight = 0.5f;
+
+        public static float MountedEffectiveDamageWeight = 1.0f;
+        public static float MountedAttackSpeedWeight = 0.4f;
+        public static float MountedReachWeight = 1.2f;
+        public static float MountedHandlingWeight = 0.3f;
+
         /// <summary>
         /// Opinionated defaults, per the user's explicit split ("bin ich beritten oder nicht"):
         /// on foot, footwork closes the distance, so swing speed and handling matter more than
@@ -39,17 +55,17 @@ namespace SmithingSuite.Advisor
             {
                 case MountedContext.Mounted:
                     return new ScoreWeights(
-                        effectiveDamageWeight: 1.0f,
-                        attackSpeedWeight: 0.4f,
-                        reachWeight: 1.2f,
-                        handlingWeight: 0.3f);
+                        effectiveDamageWeight: MountedEffectiveDamageWeight,
+                        attackSpeedWeight: MountedAttackSpeedWeight,
+                        reachWeight: MountedReachWeight,
+                        handlingWeight: MountedHandlingWeight);
                 case MountedContext.OnFoot:
                 default:
                     return new ScoreWeights(
-                        effectiveDamageWeight: 1.0f,
-                        attackSpeedWeight: 1.0f,
-                        reachWeight: 0.2f,
-                        handlingWeight: 0.5f);
+                        effectiveDamageWeight: OnFootEffectiveDamageWeight,
+                        attackSpeedWeight: OnFootAttackSpeedWeight,
+                        reachWeight: OnFootReachWeight,
+                        handlingWeight: OnFootHandlingWeight);
             }
         }
     }

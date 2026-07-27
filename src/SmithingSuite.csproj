@@ -78,6 +78,11 @@
       <HintPath>$(BannerlordBinPath)\TaleWorlds.ObjectSystem.dll</HintPath>
       <Private>False</Private>
     </Reference>
+    <!-- Mod Configuration Menu (MCM) - workshop assembly, see McmBinPath in Directory.Build.props. -->
+    <Reference Include="MCMv5">
+      <HintPath>$(McmBinPath)\MCMv5.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Logic\SmithSnapshot.cs" />
@@ -106,6 +111,7 @@
     <Compile Include="Integration\TravelStaminaBehavior.cs" />
     <Compile Include="SmithingSuiteSubModule.cs" />
     <Compile Include="SmithingSuiteConfig.cs" />
+    <Compile Include="SmithingSuiteMcmSettings.cs" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="SubModule.xml">

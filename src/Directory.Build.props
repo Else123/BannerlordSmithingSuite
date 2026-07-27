@@ -20,6 +20,9 @@
     <BannerlordNativeModulePath>$(BannerlordPath)\Modules\Native\bin\Win64_Shipping_Client</BannerlordNativeModulePath>
     <BannerlordModulesPath>$(BannerlordPath)\Modules</BannerlordModulesPath>
     <BannerlordExePath>$(BannerlordPath)\bin\Win64_Shipping_Client\Bannerlord.exe</BannerlordExePath>
+    <!-- MCM (Mod Configuration Menu) workshop assembly, derived from the Steam library - same
+         Workshop id (2859238197) and derivation as the AutoTrader's Directory.Build.props. -->
+    <McmBinPath>$(BannerlordPath)\..\..\workshop\content\261550\2859238197\bin\Win64_Shipping_Client</McmBinPath>
   </PropertyGroup>
 
   <Target Name="ValidateBannerlordPath" BeforeTargets="BeforeBuild">

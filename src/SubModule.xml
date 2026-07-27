@@ -11,6 +11,7 @@
 		<DependedModule Id="SandBoxCore" DependentVersion="v1.4.7" Optional="false" />
 		<DependedModule Id="Sandbox" DependentVersion="v1.4.7" Optional="false" />
 		<DependedModule Id="StoryMode" DependentVersion="v1.4.7" Optional="false" />
+		<DependedModule Id="Bannerlord.MBOptionScreen" Optional="false" />
 	</DependedModules>
 	<SubModules>
 		<SubModule>
