@@ -38,6 +38,14 @@ namespace SmithingSuite.Integration
 
         private void OnHourlyTick()
         {
+            // Bridged on every tick (code review Slice 6 finding A): this behavior reads
+            // SmithingSuiteConfig.TravelStaminaEnabled/TravelStaminaMultiplier directly, never
+            // through the town menu, so without this call a player who flips the toggle off in
+            // MCM mid-session would keep recovering stamina all session - the exact bug the
+            // finding described. Hourly is cheap enough (a handful of field copies) that this is
+            // not a per-frame cost. Safe no-op if MCM has not registered the page yet.
+            SmithingSuiteMcmSettings.Apply();
+
             if (!SmithingSuiteConfig.TravelStaminaEnabled)
             {
                 return;

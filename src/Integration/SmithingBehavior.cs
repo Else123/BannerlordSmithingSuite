@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using Helpers;
 using SmithingSuite.Logic;
@@ -51,6 +50,13 @@ namespace SmithingSuite.Integration
 
         private void OnGameLoaded(CampaignGameStarter campaignGameStarter)
         {
+            // Bridged once here too (code review Slice 6 finding A): this is the only listener
+            // guaranteed to run at the start of every session, so a fresh session starts with the
+            // player's saved MCM settings even if the player never opens the town menu that
+            // session before some other path (travel stamina, the crafting-screen advisor) reads
+            // SmithingSuiteConfig/ScoreWeights. Safe no-op if MCM has not registered the page yet.
+            SmithingSuiteMcmSettings.Apply();
+
             if (campaignGameStarter == null)
             {
                 return;
@@ -78,19 +84,22 @@ namespace SmithingSuite.Integration
 
         private void SmithingTownConsequence(MenuCallbackArgs args)
         {
-            // Bridged on each use rather than cached, exactly like the AutoTrader does: a value
-            // the player changes in MCM mid-session must take effect on the very next run without
-            // a restart (SPEC-SLICE6.md AC10). Safe no-op if MCM has not registered the page yet.
-            SmithingSuiteMcmSettings.Apply();
-
-            string settlementName = Settlement.CurrentSettlement != null && Settlement.CurrentSettlement.Name != null
-                ? Settlement.CurrentSettlement.Name.ToString()
-                : "?";
-            SmithingLog.BeginRun(settlementName);
-            SmithingLog.Screen("Smithing Suite: running at " + settlementName + "...");
-
             try
             {
+                // Bridged on each use rather than cached, exactly like the AutoTrader does: a
+                // value the player changes in MCM mid-session must take effect on the very next
+                // run without a restart (SPEC-SLICE6.md AC10). Safe no-op if MCM has not
+                // registered the page yet. Inside the try/finally (code review Slice 6 finding
+                // E.2) so a bridging exception cannot escape the menu callback unguarded, and so
+                // SmithingLog.EndRun below still flushes whatever this run managed to log.
+                SmithingSuiteMcmSettings.Apply();
+
+                string settlementName = Settlement.CurrentSettlement != null && Settlement.CurrentSettlement.Name != null
+                    ? Settlement.CurrentSettlement.Name.ToString()
+                    : "?";
+                SmithingLog.BeginRun(settlementName);
+                SmithingLog.Screen("Smithing Suite: running at " + settlementName + "...");
+
                 IReadOnlyList<SmithSnapshot> smithsBefore = _connector.GetSmiths();
                 Dictionary<string, int> smeltedCountByHero = RunSmeltPhase(smithsBefore);
 
@@ -149,19 +158,21 @@ namespace SmithingSuite.Integration
         // so SmeltPlanner never sees - and therefore can never spend - the stamina reserved for
         // refining. Also logs full vs. budgeted stamina and the resulting capacity per smith, so
         // the split that used to be invisible in smithingsuite.log is now the first thing a
-        // tester sees in the SMELT phase.
+        // tester sees in the SMELT phase. The clamp-and-floor arithmetic itself now lives in
+        // SmithSnapshot.ForSmeltShare (engine-free Logic layer, code review Slice 6 finding C) -
+        // this method is just the log-and-loop wrapper around it.
         private static IReadOnlyList<SmithSnapshot> ApplySmeltStaminaBudget(IReadOnlyList<SmithSnapshot> smiths)
         {
-            int clampedShare = ClampSharePercent(SmithingSuiteConfig.SmeltStaminaSharePercent);
-            LogStaminaBudgetHeader(clampedShare);
+            int sharePercent = SmithingSuiteConfig.SmeltStaminaSharePercent;
+            // The configured value is logged as-is (not re-clamped here) - the clamp is Logic's
+            // job (SmithSnapshot.ForSmeltShare), and each per-smith line below already shows the
+            // resulting budgetedStamina/smeltCapacity, so a reader still sees the effective share.
+            LogStaminaBudgetHeader(sharePercent);
 
             var budgeted = new List<SmithSnapshot>(smiths.Count);
             foreach (SmithSnapshot smith in smiths)
             {
-                // Floor, never round up: refining must never be starved by a smelt share that
-                // rounds in its own favor.
-                int budgetedStamina = smith.Stamina * clampedShare / 100;
-                SmithSnapshot budgetedSmith = smith.WithStaminaBudget(budgetedStamina);
+                SmithSnapshot budgetedSmith = SmithSnapshot.ForSmeltShare(smith, sharePercent);
                 LogStaminaBudget(smith, budgetedSmith);
                 budgeted.Add(budgetedSmith);
             }
@@ -169,22 +180,14 @@ namespace SmithingSuite.Integration
             return budgeted;
         }
 
-        // Clamped here, at the read site, rather than trusted from SmithingSuiteConfig - a bad
-        // value there (manual edit, future MCM input) must never be able to hand smelting a
-        // negative or more-than-100% share of a smith's stamina.
-        private static int ClampSharePercent(int sharePercent)
-        {
-            return Math.Max(0, Math.Min(100, sharePercent));
-        }
-
-        private static void LogStaminaBudgetHeader(int clampedSharePercent)
+        private static void LogStaminaBudgetHeader(int sharePercent)
         {
             if (!SmithingLog.IsVerbose)
             {
                 return;
             }
 
-            SmithingLog.Line("Stamina budget (smelt share=" + clampedSharePercent + "%):");
+            SmithingLog.Line("Stamina budget (smelt share=" + sharePercent + "%):");
         }
 
         private static void LogStaminaBudget(SmithSnapshot fullSmith, SmithSnapshot budgetedSmith)
@@ -303,6 +306,14 @@ namespace SmithingSuite.Integration
                 return;
             }
 
+            // Computed once per plan (not per action, code review Slice 6 finding D): whether
+            // ANY smith in the party holds the relevant perk at all. Needed so
+            // DescribeSmeltRoutingReason can tell "no CuriousSmelter/PracticalSmelter anywhere
+            // in the roster" apart from "one exists but is currently out of capacity" - without
+            // this, both cases produced the same plausible-but-sometimes-false log line.
+            bool anyCuriousSmelterInParty = AnyHasCuriousSmelter(smiths);
+            bool anyPracticalSmelterInParty = AnyHasPracticalSmelter(smiths);
+
             SmithingLog.Line("Smelt plan: " + plan.Actions.Count + " action(s).");
             foreach (SmeltAction action in plan.Actions)
             {
@@ -310,8 +321,34 @@ namespace SmithingSuite.Integration
                 SmeltCandidate candidate = FindCandidate(candidates, action.ItemId);
                 SmithingLog.Line("  " + HeroDisplayName(smiths, action.HeroId) + " -> "
                     + ItemDisplayName(candidates, action.ItemId)
-                    + " (" + DescribeSmeltRoutingReason(smith, candidate) + ")");
+                    + " (" + DescribeSmeltRoutingReason(smith, candidate, anyCuriousSmelterInParty, anyPracticalSmelterInParty) + ")");
             }
+        }
+
+        private static bool AnyHasCuriousSmelter(IReadOnlyList<SmithSnapshot> smiths)
+        {
+            foreach (SmithSnapshot smith in smiths)
+            {
+                if (smith.HasCuriousSmelter)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool AnyHasPracticalSmelter(IReadOnlyList<SmithSnapshot> smiths)
+        {
+            foreach (SmithSnapshot smith in smiths)
+            {
+                if (smith.HasPracticalSmelter)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static string CandidateClass(SmeltCandidate candidate)
@@ -323,9 +360,12 @@ namespace SmithingSuite.Integration
         // the matching perk - the plan itself only carries HeroId + ItemId, so this is the only
         // place that can reconstruct why SmeltPlanner picked this particular smith. Mirrors the
         // preferred/fallback split in SmeltPlanner.AssignmentOrder: research-relevant candidates
-        // prefer CuriousSmelter, bulk candidates prefer PracticalSmelter, and either falls back to
-        // "preferred smith at capacity" once no perked smith had room left.
-        private static string DescribeSmeltRoutingReason(SmithSnapshot smith, SmeltCandidate candidate)
+        // prefer CuriousSmelter, bulk candidates prefer PracticalSmelter. The fallback case is
+        // further split by whether the perk exists ANYWHERE in the party (code review Slice 6
+        // finding D): "at capacity" implied a busy perked smith the player could wait out or free
+        // up, which is false - and misleading - when no smith in the roster has the perk at all.
+        private static string DescribeSmeltRoutingReason(SmithSnapshot smith, SmeltCandidate candidate,
+            bool anyCuriousSmelterInParty, bool anyPracticalSmelterInParty)
         {
             if (smith == null || candidate == null)
             {
@@ -334,10 +374,24 @@ namespace SmithingSuite.Integration
 
             if (candidate.TemplateHasUnopenedParts)
             {
-                return smith.HasCuriousSmelter ? "CuriousSmelter preferred" : "fallback - preferred smith at capacity";
+                if (smith.HasCuriousSmelter)
+                {
+                    return "CuriousSmelter preferred";
+                }
+
+                return anyCuriousSmelterInParty
+                    ? "fallback - CuriousSmelter at capacity"
+                    : "fallback - no CuriousSmelter in party";
             }
 
-            return smith.HasPracticalSmelter ? "PracticalSmelter preferred" : "fallback - preferred smith at capacity";
+            if (smith.HasPracticalSmelter)
+            {
+                return "PracticalSmelter preferred";
+            }
+
+            return anyPracticalSmelterInParty
+                ? "fallback - PracticalSmelter at capacity"
+                : "fallback - no PracticalSmelter in party";
         }
 
         private static SmithSnapshot FindSmith(IReadOnlyList<SmithSnapshot> smiths, string heroId)

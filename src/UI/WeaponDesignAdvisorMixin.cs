@@ -79,6 +79,15 @@ namespace SmithingSuite.UI
 
         public WeaponDesignAdvisorMixin(WeaponDesignVM vm) : base(vm)
         {
+            // Bridged once when the crafting screen (and this mixin) is constructed (code review
+            // Slice 6 finding A): the player can reach this screen directly, without ever
+            // clicking the town-menu option that was the only other Apply() call site, so
+            // ScoreWeights.ForContext(...) below and in ExecuteSuggestBest would otherwise keep
+            // scoring against compiled defaults for the whole session. Deliberately NOT in
+            // OnRefresh - that can run every frame (see class doc). Safe no-op if MCM has not
+            // registered the page yet.
+            SmithingSuiteMcmSettings.Apply();
+
             _advisorAxes = new MBBindingList<AdvisorAxisItemVM>();
             _advisorContextButtonText = ContextButtonLabel(mounted: false);
         }
@@ -261,6 +270,14 @@ namespace SmithingSuite.UI
             AdvisorIsBusy = true;
             try
             {
+                // Bridged again at the start of the one entry point allowed to run the optimizer
+                // (code review Slice 6 finding A): a value the player changes in MCM between
+                // opening the crafting screen and clicking "Suggest best" - the evaluation budget
+                // or any axis weight - must take effect on this search, not the next one. Inside
+                // the try so a bridging exception is caught by this method's existing fail-safe
+                // (AC15) instead of escaping. Never in OnRefresh, which can run every frame.
+                SmithingSuiteMcmSettings.Apply();
+
                 WeaponDesignVM vm = ViewModel;
                 if (vm == null)
                 {
