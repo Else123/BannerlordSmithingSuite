@@ -54,6 +54,15 @@ namespace SmithingSuite.UI
         // would then log nothing while the panel just silently vanished.
         private bool _hasLoggedFailure;
 
+        // Separate one-shot flags per message (not a single shared bool): OnRefresh can fire every
+        // frame, and the "not yet ready" case legitimately happens on the very first tick or two
+        // before GauntletCraftingScreen has populated CraftedItemObject - it must log once so that
+        // state is visible, but must never fire again once the panel has started succeeding, and
+        // must not prevent the success line from ever logging (bug diagnosis: this mixin previously
+        // logged nothing at all on the success path, which is why the bug needed a code read).
+        private bool _hasLoggedFirstSuccess;
+        private bool _hasLoggedNotYetReady;
+
         // Cached identity of the last-scored design (FINDING 5) - the four selected pieces' engine
         // object references and scale percentages, compared field-by-field in DesignUnchanged rather
         // than via a per-frame string concatenation. null piece + 0 scale is a valid "no piece
@@ -90,6 +99,13 @@ namespace SmithingSuite.UI
 
             _advisorAxes = new MBBindingList<AdvisorAxisItemVM>();
             _advisorContextButtonText = ContextButtonLabel(mounted: false);
+
+            // One-shot, unconditional (the constructor itself only ever runs once per mixin
+            // instance): confirms UIExtenderEx actually constructed this mixin, distinct from the
+            // "mixins registered" line logged at UIExtenderEx.Apply() time, which only proves the
+            // registration call happened, not that the game ever built an instance for a real
+            // crafting screen.
+            SmithingLog.Line("WeaponDesignAdvisorMixin: advisor mixin attached to WeaponDesignVM");
         }
 
         [DataSourceProperty]
@@ -337,7 +353,21 @@ namespace SmithingSuite.UI
                     return;
                 }
 
-                bool unchanged = UpdateLastDesignAndCheckUnchanged(vm);
+                CraftingPiece bladePiece;
+                int bladeScale;
+                ReadPieceIdentity(vm.SelectedBladePiece, out bladePiece, out bladeScale);
+                CraftingPiece guardPiece;
+                int guardScale;
+                ReadPieceIdentity(vm.SelectedGuardPiece, out guardPiece, out guardScale);
+                CraftingPiece handlePiece;
+                int handleScale;
+                ReadPieceIdentity(vm.SelectedHandlePiece, out handlePiece, out handleScale);
+                CraftingPiece pommelPiece;
+                int pommelScale;
+                ReadPieceIdentity(vm.SelectedPommelPiece, out pommelPiece, out pommelScale);
+
+                bool unchanged = DesignUnchanged(bladePiece, bladeScale, guardPiece, guardScale,
+                    handlePiece, handleScale, pommelPiece, pommelScale);
                 if (!force && unchanged)
                 {
                     return;
@@ -346,13 +376,33 @@ namespace SmithingSuite.UI
                 WeaponStats stats = ToWeaponStats(vm.CraftedItemObject);
                 if (stats == null)
                 {
+                    // Bug fix: do NOT commit the cache here. GauntletCraftingScreen calls
+                    // RefreshItem() from its update loop, and the very first call very likely lands
+                    // before CraftedItemObject is populated - stats is null on that first tick even
+                    // though the player has (or is about to have) a real selection. The old code
+                    // committed the cache in the shared check-and-commit step above before this
+                    // null check ran, so that first failed attempt latched as "the current design",
+                    // every subsequent frame then read as unchanged, and OnRefresh short-circuited
+                    // before ever reaching the scoring code below - the panel stayed hidden for the
+                    // rest of the session no matter what the player crafted. Leaving the cache
+                    // untouched here means the next frame is not "unchanged" yet and retries.
                     AdvisorIsVisible = false;
+                    if (!_hasLoggedNotYetReady)
+                    {
+                        _hasLoggedNotYetReady = true;
+                        SmithingLog.Line("WeaponDesignAdvisorMixin: crafted item not yet available, advisor panel waiting for a design");
+                    }
                     return;
                 }
 
                 MountedContext context = AdvisorIsMounted ? MountedContext.Mounted : MountedContext.OnFoot;
                 ScoreWeights weights = ScoreWeights.ForContext(context);
                 WeaponScore score = WeaponScorer.Score(stats, context, weights);
+
+                // Commit only now that a score was actually computed - see the comment on the
+                // stats == null branch above for why an early-out must never reach this line.
+                CommitLastDesign(bladePiece, bladeScale, guardPiece, guardScale,
+                    handlePiece, handleScale, pommelPiece, pommelScale);
 
                 UpdateAxes(score);
                 AdvisorVerdictText = BuildVerdict(score, context);
@@ -361,6 +411,13 @@ namespace SmithingSuite.UI
                 AdvisorSuggestionText = string.Empty;
                 AdvisorHasSuggestion = false;
                 AdvisorIsVisible = true;
+
+                if (!_hasLoggedFirstSuccess)
+                {
+                    _hasLoggedFirstSuccess = true;
+                    SmithingLog.Line("WeaponDesignAdvisorMixin: advisor panel shown, scored "
+                        + score.Axes.Count + " axes");
+                }
             }
             catch (Exception ex)
             {
@@ -403,34 +460,46 @@ namespace SmithingSuite.UI
         /// singleton instances from <c>MBObjectManager</c>, and the decompiled vanilla
         /// <c>WeaponDesignVM</c> compares them the same way when matching the current selection
         /// (plain <c>==</c>: <c>_crafting.SelectedPieces[pieceType].CraftingPiece == craftingPieceVM.CraftingPiece.CraftingPiece</c>)
-        /// - and scale percentage against what was cached
-        /// on the previous call, updating the cache as a side effect. Deliberately NOT
-        /// <c>CraftedItemObject</c>'s own identity/StringId - GauntletCraftingScreen regenerates that
-        /// item on every refresh regardless of whether the design actually changed, so keying on it
-        /// would defeat the short-circuit entirely. Deliberately NOT a string key (the previous
-        /// implementation) - that built 4-8 short-lived strings on every call, i.e. potentially every
-        /// frame, purely to detect "nothing changed".
+        /// - and scale percentage against what was cached on the previous successful commit.
+        /// Deliberately NOT <c>CraftedItemObject</c>'s own identity/StringId - GauntletCraftingScreen
+        /// regenerates that item on every refresh regardless of whether the design actually changed,
+        /// so keying on it would defeat the short-circuit entirely. Deliberately NOT a string key
+        /// (the previous implementation) - that built 4-8 short-lived strings on every call, i.e.
+        /// potentially every frame, purely to detect "nothing changed".
+        ///
+        /// Deliberately a PURE comparison with no side effect on the cache (bug fix - previously this
+        /// check and the cache commit were one method, so it committed even on a call that later
+        /// bailed out with no score, latching a failed first frame as "the current design" forever;
+        /// see <see cref="RefreshFromCurrentItem"/>). The cache is only ever written by
+        /// <see cref="CommitLastDesign"/>, which the caller invokes exclusively after a score has
+        /// actually been computed.
         /// </summary>
-        private bool UpdateLastDesignAndCheckUnchanged(WeaponDesignVM vm)
+        private bool DesignUnchanged(
+            CraftingPiece bladePiece, int bladeScale,
+            CraftingPiece guardPiece, int guardScale,
+            CraftingPiece handlePiece, int handleScale,
+            CraftingPiece pommelPiece, int pommelScale)
         {
-            CraftingPiece bladePiece;
-            int bladeScale;
-            ReadPieceIdentity(vm.SelectedBladePiece, out bladePiece, out bladeScale);
-            CraftingPiece guardPiece;
-            int guardScale;
-            ReadPieceIdentity(vm.SelectedGuardPiece, out guardPiece, out guardScale);
-            CraftingPiece handlePiece;
-            int handleScale;
-            ReadPieceIdentity(vm.SelectedHandlePiece, out handlePiece, out handleScale);
-            CraftingPiece pommelPiece;
-            int pommelScale;
-            ReadPieceIdentity(vm.SelectedPommelPiece, out pommelPiece, out pommelScale);
-
-            bool unchanged = bladePiece == _lastBladePiece && bladeScale == _lastBladeScale
+            return bladePiece == _lastBladePiece && bladeScale == _lastBladeScale
                 && guardPiece == _lastGuardPiece && guardScale == _lastGuardScale
                 && handlePiece == _lastHandlePiece && handleScale == _lastHandleScale
                 && pommelPiece == _lastPommelPiece && pommelScale == _lastPommelScale;
+        }
 
+        /// <summary>
+        /// Writes the just-scored design into the cache that <see cref="DesignUnchanged"/> compares
+        /// against next time. Must only be called after <see cref="RefreshFromCurrentItem"/> has
+        /// successfully computed a score for these exact piece/scale values - never on an early-out
+        /// (null VM, unavailable stats, exception), or a failed attempt would incorrectly latch as
+        /// "the current design" and mask itself as unchanged on every later frame (the bug this
+        /// split fixes).
+        /// </summary>
+        private void CommitLastDesign(
+            CraftingPiece bladePiece, int bladeScale,
+            CraftingPiece guardPiece, int guardScale,
+            CraftingPiece handlePiece, int handleScale,
+            CraftingPiece pommelPiece, int pommelScale)
+        {
             _lastBladePiece = bladePiece;
             _lastBladeScale = bladeScale;
             _lastGuardPiece = guardPiece;
@@ -439,8 +508,6 @@ namespace SmithingSuite.UI
             _lastHandleScale = handleScale;
             _lastPommelPiece = pommelPiece;
             _lastPommelScale = pommelScale;
-
-            return unchanged;
         }
 
         private static void ReadPieceIdentity(CraftingPieceVM pieceVm, out CraftingPiece piece, out int scale)
