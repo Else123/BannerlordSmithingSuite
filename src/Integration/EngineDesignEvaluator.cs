@@ -38,9 +38,12 @@ namespace SmithingSuite.Integration
         // resolution failure below.
         private static readonly DesignEvaluation UnusableEvaluation = new DesignEvaluation(ZeroStats, int.MaxValue);
 
-        // Logged once per run, not once per call (see class doc) - the optimizer's search loop can
-        // hit the same failure on every remaining evaluation once something is wrong.
-        private static bool _hasLoggedFailure;
+        // Logged once per RUN (not once per call, see class doc) - the optimizer's search loop can
+        // hit the same failure on every remaining evaluation once something is wrong. Deliberately
+        // an INSTANCE field, not static (FINDING 2): a fresh EngineDesignEvaluator is constructed
+        // per "Suggest Best" click, and a static flag would stay tripped for the rest of the game
+        // session, silently swallowing a genuinely different failure an hour later.
+        private bool _hasLoggedFailure;
 
         public DesignEvaluation Evaluate(DesignCandidate candidate)
         {
@@ -55,7 +58,7 @@ namespace SmithingSuite.Integration
             }
         }
 
-        private static DesignEvaluation EvaluateCore(DesignCandidate candidate)
+        private DesignEvaluation EvaluateCore(DesignCandidate candidate)
         {
             if (candidate == null)
             {
@@ -121,12 +124,30 @@ namespace SmithingSuite.Integration
         /// </summary>
         internal static WeaponStats ToWeaponStats(WeaponComponentData weapon, ItemObject item)
         {
+            float swingDamage = weapon.SwingDamage;
+            float thrustDamage = weapon.ThrustDamage;
+
+            // MapDamageType falls through Invalid to Cut as a "least-wrong placeholder" (see its own
+            // doc) on the ASSUMPTION that the engine always pairs Invalid with a zero damage value.
+            // That pairing is not enforced anywhere (FINDING 3) - if the engine ever reported Invalid
+            // with a nonzero magnitude, the scorer would treat it as real Cut damage and quietly
+            // corrupt the "engine truth" claim. Defensively zero the paired magnitude here so the
+            // placeholder can never influence a score, regardless of what the engine actually sends.
+            if (weapon.SwingDamageType == DamageTypes.Invalid)
+            {
+                swingDamage = 0f;
+            }
+            if (weapon.ThrustDamageType == DamageTypes.Invalid)
+            {
+                thrustDamage = 0f;
+            }
+
             return new WeaponStats(
                 weapon.SwingSpeed,
-                weapon.SwingDamage,
+                swingDamage,
                 MapDamageType(weapon.SwingDamageType),
                 weapon.ThrustSpeed,
-                weapon.ThrustDamage,
+                thrustDamage,
                 MapDamageType(weapon.ThrustDamageType),
                 weapon.Handling,
                 weapon.WeaponLength,
@@ -187,8 +208,9 @@ namespace SmithingSuite.Integration
         /// (-1), which a real weapon design can legitimately produce (e.g. a blade with no thrust
         /// component reports <c>ThrustDamageType == Invalid</c>, see CraftingTemplate.GetStatDatas).
         /// DamageKind has no Invalid member, so that case must be handled explicitly rather than cast
-        /// - Cut is the least-wrong placeholder, and it is paired with a damage value that is 0 in
-        /// practice whenever the type is Invalid, so the axis this feeds never overstates anything.
+        /// - Cut is the least-wrong placeholder. <see cref="ToWeaponStats"/> defensively zeroes the
+        /// paired damage magnitude whenever this placeholder is used, so this mapping alone is never
+        /// enough to make the axis it feeds overstate anything (see ToWeaponStats for why).
         /// </summary>
         private static DamageKind MapDamageType(DamageTypes damageType)
         {
@@ -205,7 +227,7 @@ namespace SmithingSuite.Integration
             }
         }
 
-        private static void LogFailureOnce(string reason)
+        private void LogFailureOnce(string reason)
         {
             if (_hasLoggedFailure)
             {

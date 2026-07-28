@@ -448,9 +448,12 @@ namespace SmithingSuite.UI
 
         private static string DescribeSuggestion(OptimizationResult result)
         {
-            if (result?.Score == null)
+            // HasLegalResult is the ONLY thing that makes result.Best trustworthy (FINDING 1) - an
+            // unverified seed must never be shown as "Suggested", so this checks it before Score at
+            // all, rather than trusting a non-null Score to imply legality.
+            if (result == null || !result.HasLegalResult || result.Score == null)
             {
-                return "No craftable design was found within the current smithing skill and unlocked parts.";
+                return "No craftable improvement was found within the current smithing skill and unlocked parts.";
             }
 
             string pieceList = string.Join(", ", result.Best.Pieces

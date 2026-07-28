@@ -53,8 +53,21 @@ namespace SmithingSuite.Advisor
     /// <summary>What one <see cref="DesignOptimizer.Optimize"/> call produced.</summary>
     public sealed class OptimizationResult
     {
-        /// <summary>Always legal (AC4) and always within the catalogue (AC3) - never null (see class doc).</summary>
+        /// <summary>
+        /// Never null (see class doc) - but legal (AC4) and within the catalogue (AC3) ONLY when
+        /// <see cref="HasLegalResult"/> is true. When it is false, this is the unverified seed
+        /// candidate, returned purely so callers never see a null <c>Best</c>; it must NOT be
+        /// presented to the player as a craftable suggestion (FINDING 1).
+        /// </summary>
         public DesignCandidate Best { get; }
+
+        /// <summary>
+        /// True when <see cref="Best"/> is a genuinely legal, catalogue-verified design found during
+        /// the search. False when no legal candidate was ever found - e.g. an illegal seed piece
+        /// sitting in a slot the catalogue offers no candidates for, or a budget too small to verify
+        /// even the seed - in which case <see cref="Best"/> is merely the unverified seed.
+        /// </summary>
+        public bool HasLegalResult { get; }
 
         public WeaponScore Score { get; }
 
@@ -64,9 +77,10 @@ namespace SmithingSuite.Advisor
         /// <summary>True if the search stopped because the budget ran out, not because it converged.</summary>
         public bool BudgetExhausted { get; }
 
-        public OptimizationResult(DesignCandidate best, WeaponScore score, int evaluationsUsed, bool budgetExhausted)
+        public OptimizationResult(DesignCandidate best, bool hasLegalResult, WeaponScore score, int evaluationsUsed, bool budgetExhausted)
         {
             Best = best;
+            HasLegalResult = hasLegalResult;
             Score = score;
             EvaluationsUsed = evaluationsUsed;
             BudgetExhausted = budgetExhausted;
@@ -411,21 +425,23 @@ namespace SmithingSuite.Advisor
             /// <summary>
             /// Never null, never throws (hard rule): the best legal design found anywhere during the
             /// search, or - if none was ever legal, e.g. even the seed is illegal and no catalogue
-            /// swap fixed that - the seed itself, scored honestly if it could be evaluated at all.
+            /// swap fixed that (FINDING 1) - the seed itself, scored honestly if it could be
+            /// evaluated at all, with <see cref="OptimizationResult.HasLegalResult"/> set to false so
+            /// callers know it was never verified and must not present it as a suggestion.
             /// </summary>
             public OptimizationResult BuildResult(DesignCandidate seed)
             {
                 if (_bestLegalCandidate != null)
                 {
                     var score = WeaponScorer.Score(_bestLegalEvaluation.Stats, _options.Context, _options.Weights);
-                    return new OptimizationResult(_bestLegalCandidate, score, EvaluationsUsed, BudgetExhausted);
+                    return new OptimizationResult(_bestLegalCandidate, true, score, EvaluationsUsed, BudgetExhausted);
                 }
 
                 var seedEvaluation = TryEvaluate(seed);
                 var seedScore = seedEvaluation != null
                     ? WeaponScorer.Score(seedEvaluation.Stats, _options.Context, _options.Weights)
                     : null;
-                return new OptimizationResult(seed, seedScore, EvaluationsUsed, BudgetExhausted);
+                return new OptimizationResult(seed, false, seedScore, EvaluationsUsed, BudgetExhausted);
             }
         }
     }
