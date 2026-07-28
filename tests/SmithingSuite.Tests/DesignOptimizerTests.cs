@@ -346,5 +346,96 @@ namespace SmithingSuite.Tests
             AssertSameDesign(firstResult.Best, secondResult.Best);
             Assert.Equal(firstResult.EvaluationsUsed, secondResult.EvaluationsUsed);
         }
+
+        [Fact]
+        public void Optimize_NeverPresentsAnIllegalSeedAsALegalSuggestionWhenNoCatalogueCandidateCanFixIt()
+        {
+            // The seed's pommel is not part of the catalogue at all, and the catalogue offers NO
+            // pommel candidates whatsoever - OptimizeSlot bails out early for an empty slot
+            // candidate list, so this illegal piece can never be swapped out. Every candidate the
+            // search ever builds therefore still carries "pommel-illegal" and is illegal (IsLegal
+            // requires ALL pieces to be in the catalogue) - _bestLegalCandidate must stay null for
+            // the whole run, and BuildResult must be honest about that via HasLegalResult rather
+            // than silently handing back the illegal seed as if it were verified.
+            var seed = Candidate(
+                "one-handed-sword",
+                Piece("blade-basic", BladeType, tier: 1),
+                Piece("guard-basic", GuardType, tier: 1),
+                Piece("handle-basic", HandleType, tier: 1),
+                Piece("pommel-illegal", PommelType, tier: 1));
+
+            var catalogue = new PieceCatalogue(
+                "one-handed-sword",
+                new[]
+                {
+                    Piece("blade-basic", BladeType, tier: 1),
+                    Piece("blade-decent", BladeType, tier: 2),
+                    Piece("guard-basic", GuardType, tier: 1),
+                    Piece("handle-basic", HandleType, tier: 1),
+                    // Deliberately NO PommelType piece anywhere in the catalogue.
+                },
+                new[] { 100 });
+
+            DesignEvaluation Evaluate(DesignCandidate candidate)
+            {
+                return new DesignEvaluation(Stats(50f), difficulty: 10);
+            }
+
+            var evaluator = new FakeDesignEvaluator(Evaluate);
+            var optimizer = new DesignOptimizer(evaluator);
+            var options = new OptimizerOptions(
+                evaluationBudget: 200,
+                context: MountedContext.OnFoot,
+                weights: ScoreWeights.ForContext(MountedContext.OnFoot),
+                maxDifficulty: 100);
+
+            var result = optimizer.Optimize(seed, catalogue, options);
+
+            Assert.NotNull(result);
+            Assert.NotNull(result.Best); // never null (hard rule) ...
+            Assert.False(result.HasLegalResult); // ... but must not be claimed legal (FINDING 1).
+        }
+
+        [Fact]
+        public void Optimize_WithZeroEvaluationBudget_DoesNotThrowAndDoesNotClaimALegalSuggestion()
+        {
+            var seed = Candidate(
+                "one-handed-sword",
+                Piece("blade-basic", BladeType, tier: 1),
+                Piece("guard-basic", GuardType, tier: 1),
+                Piece("handle-basic", HandleType, tier: 1),
+                Piece("pommel-basic", PommelType, tier: 1));
+
+            var catalogue = new PieceCatalogue(
+                "one-handed-sword",
+                new[]
+                {
+                    Piece("blade-basic", BladeType, tier: 1),
+                    Piece("guard-basic", GuardType, tier: 1),
+                    Piece("handle-basic", HandleType, tier: 1),
+                    Piece("pommel-basic", PommelType, tier: 1),
+                },
+                new[] { 100 });
+
+            DesignEvaluation Evaluate(DesignCandidate candidate)
+            {
+                return new DesignEvaluation(Stats(50f), difficulty: 10);
+            }
+
+            var evaluator = new FakeDesignEvaluator(Evaluate);
+            var optimizer = new DesignOptimizer(evaluator);
+            var options = new OptimizerOptions(
+                evaluationBudget: 0,
+                context: MountedContext.OnFoot,
+                weights: ScoreWeights.ForContext(MountedContext.OnFoot),
+                maxDifficulty: 100);
+
+            var result = optimizer.Optimize(seed, catalogue, options);
+
+            Assert.NotNull(result);
+            Assert.NotNull(result.Best); // never null, never throws (hard rule) ...
+            Assert.False(result.HasLegalResult); // ... but a budget of 0 verified nothing (FINDING 1 / AC7 edge).
+            Assert.Equal(0, result.EvaluationsUsed);
+        }
     }
 }
