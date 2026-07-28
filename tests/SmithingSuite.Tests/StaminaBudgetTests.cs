@@ -125,5 +125,46 @@ namespace SmithingSuite.Tests
             Assert.Equal(134, budgeted.Stamina);
             Assert.Equal(smith.Capacity, budgeted.Capacity);
         }
+
+        // The tests below pin SmithSnapshot.ForSmeltShare - the clamp-and-floor share arithmetic
+        // moved from SmithingBehavior into this engine-free layer (code review Slice 6 finding
+        // C), so a regression in it now fails a test the project actually compiles and runs.
+
+        [Fact]
+        public void ForSmeltShare_NegativeShare_ClampsToZero_YieldsZeroCapacity()
+        {
+            SmithSnapshot smith = FullSmith(stamina: 134);
+
+            SmithSnapshot budgeted = SmithSnapshot.ForSmeltShare(smith, -50);
+
+            Assert.Equal(0, budgeted.Stamina);
+            Assert.Equal(0, budgeted.Capacity);
+        }
+
+        [Fact]
+        public void ForSmeltShare_ShareAboveHundred_ClampsToHundred_NeverGrantsMoreThanFullStamina()
+        {
+            // A >100% share must never hand smelting more stamina than the smith actually has -
+            // same effective result as an unbudgeted (100%) snapshot.
+            SmithSnapshot smith = FullSmith(stamina: 134);
+
+            SmithSnapshot budgeted = SmithSnapshot.ForSmeltShare(smith, 150);
+
+            Assert.Equal(smith.Stamina, budgeted.Stamina);
+            Assert.Equal(smith.Capacity, budgeted.Capacity);
+        }
+
+        [Fact]
+        public void ForSmeltShare_FiftyPercent_FloorsTheBudgetedStamina()
+        {
+            // stamina 134, cost 10: 50% share is 67 (floor of 67.0 - exact here), capacity floor(6.7) = 6.
+            SmithSnapshot smith = FullSmith(stamina: 134);
+            Assert.Equal(13, smith.Capacity);
+
+            SmithSnapshot budgeted = SmithSnapshot.ForSmeltShare(smith, 50);
+
+            Assert.Equal(67, budgeted.Stamina);
+            Assert.Equal(6, budgeted.Capacity);
+        }
     }
 }

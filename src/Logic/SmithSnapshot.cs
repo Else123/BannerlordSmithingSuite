@@ -155,5 +155,27 @@ namespace SmithingSuite.Logic
                 HasPracticalSmelter,
                 HasPracticalRefiner);
         }
+
+        /// <summary>
+        /// The AC5 share arithmetic that actually satisfies "smelting may never spend more than
+        /// its configured share of a smith's stamina": clamps <paramref name="sharePercent"/> to
+        /// 0..100 - a bad value (manual edit, future MCM input) must never be able to hand
+        /// smelting a negative or more-than-100% share - then floors <c>Stamina * share / 100</c>
+        /// so refining is never starved by a smelt share that rounds in its own favor. Moved here
+        /// (code review Slice 6 finding C) so it lives in the engine-free layer the test project
+        /// actually compiles, instead of the Integration layer where a regression would stay
+        /// green.
+        /// </summary>
+        public static SmithSnapshot ForSmeltShare(SmithSnapshot smith, int sharePercent)
+        {
+            if (smith == null)
+            {
+                throw new ArgumentNullException(nameof(smith));
+            }
+
+            int clampedShare = Math.Max(0, Math.Min(100, sharePercent));
+            int budgetedStamina = smith.Stamina * clampedShare / 100;
+            return smith.WithStaminaBudget(budgetedStamina);
+        }
     }
 }
