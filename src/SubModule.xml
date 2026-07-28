@@ -11,8 +11,18 @@
 		<DependedModule Id="SandBoxCore" DependentVersion="v1.4.7" Optional="false" />
 		<DependedModule Id="Sandbox" DependentVersion="v1.4.7" Optional="false" />
 		<DependedModule Id="StoryMode" DependentVersion="v1.4.7" Optional="false" />
+		<!--
+		Asymmetric on purpose (code review finding, kept here so it is not "fixed" by accident):
+		MBOptionScreen stays Optional="false", matching the shipping AutoTrader mod's precedent -
+		making MCM optional would additionally require isolating the AttributeGlobalSettings-derived
+		settings type behind the same no-inlining guard UiExtensionBridge uses for UIExtenderEx,
+		which is out of scope. UIExtenderEx is Optional="true" because UiExtensionBridge and
+		SmithingSuiteSubModule are written to degrade gracefully when it is absent (it costs only the
+		inline crafting advisor); Optional="false" would make the game's module loader refuse to load
+		this whole module before that fail-safe code ever runs.
+		-->
 		<DependedModule Id="Bannerlord.MBOptionScreen" Optional="false" />
-		<DependedModule Id="Bannerlord.UIExtenderEx" Optional="false" />
+		<DependedModule Id="Bannerlord.UIExtenderEx" Optional="true" />
 	</DependedModules>
 	<SubModules>
 		<SubModule>

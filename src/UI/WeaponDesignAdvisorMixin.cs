@@ -47,9 +47,25 @@ namespace SmithingSuite.UI
 
         // Logged once per run (not once per call) - RefreshItem can fire every frame, so a broken
         // mixin must not spam the log the same way EngineDesignEvaluator's own failures do not.
-        private static bool _hasLoggedFailure;
+        // Deliberately an INSTANCE field, not static (code review FINDING 2, mirroring
+        // EngineDesignEvaluator._hasLoggedFailure's own reasoning): a static flag would persist for
+        // the whole game session across every crafting-screen open and every mixin instance, so one
+        // benign first-frame exception would burn it and a genuinely different failure an hour later
+        // would then log nothing while the panel just silently vanished.
+        private bool _hasLoggedFailure;
 
-        private string _lastDesignKey;
+        // Cached identity of the last-scored design (FINDING 5) - the four selected pieces' engine
+        // object references and scale percentages, compared field-by-field in DesignUnchanged rather
+        // than via a per-frame string concatenation. null piece + 0 scale is a valid "no piece
+        // selected" identity, matching PieceKey's old "-" sentinel.
+        private CraftingPiece _lastBladePiece;
+        private int _lastBladeScale;
+        private CraftingPiece _lastGuardPiece;
+        private int _lastGuardScale;
+        private CraftingPiece _lastHandlePiece;
+        private int _lastHandleScale;
+        private CraftingPiece _lastPommelPiece;
+        private int _lastPommelScale;
 
         private bool _advisorIsVisible;
         private string _advisorVerdictText = string.Empty;
@@ -287,10 +303,11 @@ namespace SmithingSuite.UI
         /// them via <see cref="WeaponScorer"/>. Never calls <c>Crafting.GenerateItem</c> or
         /// <see cref="DesignOptimizer"/> - those are reserved for <see cref="ExecuteSuggestBest"/>.
         ///
-        /// <paramref name="force"/> = false is the per-frame path: if the four selected pieces (id +
-        /// scale) are identical to last time, this returns immediately without recomputing anything
-        /// or raising a single property-changed event - the difference between a smooth crafting
-        /// screen and a per-frame stutter.
+        /// <paramref name="force"/> = false is the per-frame path: if the four selected pieces (engine
+        /// object identity + scale) are identical to last time, this returns immediately without
+        /// recomputing anything, allocating anything, or raising a single property-changed event -
+        /// the difference between a smooth crafting screen and a per-frame stutter (FINDING 5: this
+        /// check is allocation-free, unlike the string-concatenation key it replaced).
         /// </summary>
         private void RefreshFromCurrentItem(bool force)
         {
@@ -303,12 +320,11 @@ namespace SmithingSuite.UI
                     return;
                 }
 
-                string key = BuildDesignKey(vm);
-                if (!force && key == _lastDesignKey)
+                bool unchanged = UpdateLastDesignAndCheckUnchanged(vm);
+                if (!force && unchanged)
                 {
                     return;
                 }
-                _lastDesignKey = key;
 
                 WeaponStats stats = ToWeaponStats(vm.CraftedItemObject);
                 if (stats == null)
@@ -365,22 +381,56 @@ namespace SmithingSuite.UI
         }
 
         /// <summary>
-        /// A cheap identity for "has the design changed": the four selected pieces' ids and scales.
-        /// Deliberately NOT <c>CraftedItemObject</c>'s own identity/StringId - GauntletCraftingScreen
-        /// regenerates that item on every refresh regardless of whether the design actually changed,
-        /// so keying on it would defeat the short-circuit entirely.
+        /// A cheap, allocation-free identity check for "has the design changed" (FINDING 5): compares
+        /// the four selected pieces' <see cref="CraftingPiece"/> engine object identity - these are
+        /// singleton instances from <c>MBObjectManager</c>, and the decompiled vanilla
+        /// <c>WeaponDesignVM</c> compares them the same way when matching the current selection
+        /// (plain <c>==</c>: <c>_crafting.SelectedPieces[pieceType].CraftingPiece == craftingPieceVM.CraftingPiece.CraftingPiece</c>)
+        /// - and scale percentage against what was cached
+        /// on the previous call, updating the cache as a side effect. Deliberately NOT
+        /// <c>CraftedItemObject</c>'s own identity/StringId - GauntletCraftingScreen regenerates that
+        /// item on every refresh regardless of whether the design actually changed, so keying on it
+        /// would defeat the short-circuit entirely. Deliberately NOT a string key (the previous
+        /// implementation) - that built 4-8 short-lived strings on every call, i.e. potentially every
+        /// frame, purely to detect "nothing changed".
         /// </summary>
-        private static string BuildDesignKey(WeaponDesignVM vm)
+        private bool UpdateLastDesignAndCheckUnchanged(WeaponDesignVM vm)
         {
-            return PieceKey(vm.SelectedBladePiece) + "|" + PieceKey(vm.SelectedGuardPiece) + "|"
-                + PieceKey(vm.SelectedHandlePiece) + "|" + PieceKey(vm.SelectedPommelPiece);
+            CraftingPiece bladePiece;
+            int bladeScale;
+            ReadPieceIdentity(vm.SelectedBladePiece, out bladePiece, out bladeScale);
+            CraftingPiece guardPiece;
+            int guardScale;
+            ReadPieceIdentity(vm.SelectedGuardPiece, out guardPiece, out guardScale);
+            CraftingPiece handlePiece;
+            int handleScale;
+            ReadPieceIdentity(vm.SelectedHandlePiece, out handlePiece, out handleScale);
+            CraftingPiece pommelPiece;
+            int pommelScale;
+            ReadPieceIdentity(vm.SelectedPommelPiece, out pommelPiece, out pommelScale);
+
+            bool unchanged = bladePiece == _lastBladePiece && bladeScale == _lastBladeScale
+                && guardPiece == _lastGuardPiece && guardScale == _lastGuardScale
+                && handlePiece == _lastHandlePiece && handleScale == _lastHandleScale
+                && pommelPiece == _lastPommelPiece && pommelScale == _lastPommelScale;
+
+            _lastBladePiece = bladePiece;
+            _lastBladeScale = bladeScale;
+            _lastGuardPiece = guardPiece;
+            _lastGuardScale = guardScale;
+            _lastHandlePiece = handlePiece;
+            _lastHandleScale = handleScale;
+            _lastPommelPiece = pommelPiece;
+            _lastPommelScale = pommelScale;
+
+            return unchanged;
         }
 
-        private static string PieceKey(CraftingPieceVM pieceVm)
+        private static void ReadPieceIdentity(CraftingPieceVM pieceVm, out CraftingPiece piece, out int scale)
         {
             WeaponDesignElement element = pieceVm?.CraftingPiece;
-            CraftingPiece piece = element?.CraftingPiece;
-            return piece == null ? "-" : piece.StringId + ":" + element.ScalePercentage;
+            piece = element?.CraftingPiece;
+            scale = element != null ? element.ScalePercentage : 0;
         }
 
         /// <summary>
@@ -389,6 +439,29 @@ namespace SmithingSuite.UI
         /// that flag was set from <c>ICraftingCampaignBehavior.IsOpened</c> when the VM built the
         /// list, so reading it here is "using what the VM already exposes" rather than re-querying
         /// the engine for unlocked state a second time (SPEC-SLICE4-5.md TODO 11).
+        ///
+        /// [V-BIN] Verified by decompiling TaleWorlds.CampaignSystem.ViewModelCollection.WeaponCrafting.
+        /// WeaponDesign.CraftingPieceVM and TaleWorlds.CampaignSystem.CampaignBehaviors.
+        /// CraftingCampaignBehavior (ilspycmd against the game's v1.4.7 assemblies, code review
+        /// FINDING 4): <c>CraftingPieceVM.PlayerHasPiece</c> is assigned verbatim from the
+        /// <c>isOpened</c> constructor parameter, and <c>WeaponDesignVM</c> populates every
+        /// <c>CraftingPieceVM</c> with
+        /// <c>bool flag2 = _craftingBehavior.IsOpened(weaponDesignElement.CraftingPiece, _crafting.CurrentCraftingTemplate);</c>
+        /// - i.e. <c>PlayerHasPiece</c> IS <c>ICraftingCampaignBehavior.IsOpened</c>, not an
+        /// approximation of it. <c>CraftingCampaignBehavior.IsOpened</c> reads:
+        /// <code>
+        /// public bool IsOpened(CraftingPiece craftingPiece, CraftingTemplate craftingTemplate)
+        /// {
+        ///     if (!craftingPiece.IsGivenByDefault)
+        ///     {
+        ///         return _openedPartsDictionary[craftingTemplate].Contains(craftingPiece);
+        ///     }
+        ///     return true;
+        /// }
+        /// </code>
+        /// so it unconditionally counts every <c>IsGivenByDefault</c> piece as unlocked in addition to
+        /// player-researched ones - exactly "unlocked" per AC13, no narrower and no wider. The filter
+        /// below is correct as written; no change was needed.
         /// </summary>
         private static PieceCatalogue BuildCatalogue(WeaponDesignVM vm)
         {
@@ -487,7 +560,7 @@ namespace SmithingSuite.UI
             return mounted ? "Context: Mounted" : "Context: On Foot";
         }
 
-        private static void LogFailureOnce(Exception ex)
+        private void LogFailureOnce(Exception ex)
         {
             if (_hasLoggedFailure)
             {

@@ -11,7 +11,7 @@
   members into that same view model at runtime, so every @AdvisorXxx binding below resolves against
   the ambient WeaponDesignVM + mixin instance without needing its own DataSource attribute.
 -->
-<Widget Id="SmithingSuiteAdvisorPanel" WidthSizePolicy="Fixed" HeightSizePolicy="Fixed" SuggestedWidth="320" SuggestedHeight="420" HorizontalAlignment="Left" VerticalAlignment="Top" PositionXOffset="-330" PositionYOffset="38" IsVisible="@AdvisorIsVisible">
+<Widget Id="SmithingSuiteAdvisorPanel" WidthSizePolicy="Fixed" HeightSizePolicy="Fixed" SuggestedWidth="320" SuggestedHeight="520" HorizontalAlignment="Left" VerticalAlignment="Top" PositionXOffset="-330" PositionYOffset="38" IsVisible="@AdvisorIsVisible">
   <Children>
 
     <!--Panel background - matches the dark crafting screen palette rather than importing a brush that may not exist.-->
@@ -24,13 +24,24 @@
 
         <TextWidget WidthSizePolicy="StretchToParent" HeightSizePolicy="CoverChildren" MarginTop="4" Text="@AdvisorVerdictText" Brush="Crafting.Property.Name.Text" Brush.FontSize="16" Brush.TextHorizontalAlignment="Left" />
 
-        <!--Named, explained score axes (AC10) - one row per WeaponScore.Axes entry.-->
+        <!--
+        Named, explained score axes (AC10) - one row per WeaponScore.Axes entry. Each row is now
+        name+value on top and the Reason line underneath (code review FINDING 3): showing the
+        explanation on screen, not just the raw number, is this feature's entire selling point over
+        the existing mods that already show numbers with no judgement.
+        -->
         <ListPanel DataSource="{AdvisorAxes}" WidthSizePolicy="StretchToParent" HeightSizePolicy="CoverChildren" MarginTop="8" StackLayout.LayoutMethod="VerticalTopToBottom">
           <ItemTemplate>
-            <ListPanel WidthSizePolicy="StretchToParent" HeightSizePolicy="CoverChildren" MarginTop="3" StackLayout.LayoutMethod="HorizontalLeftToRight">
+            <ListPanel WidthSizePolicy="StretchToParent" HeightSizePolicy="CoverChildren" MarginTop="5" StackLayout.LayoutMethod="VerticalTopToBottom">
               <Children>
-                <TextWidget WidthSizePolicy="Fixed" SuggestedWidth="110" HeightSizePolicy="CoverChildren" Text="@Name" Brush="Crafting.Property.Name.Text" Brush.FontSize="15" />
-                <TextWidget WidthSizePolicy="Fixed" SuggestedWidth="55" HeightSizePolicy="CoverChildren" Text="@ValueText" Brush="Crafting.Property.Value.Text" Brush.FontSize="15" />
+                <ListPanel WidthSizePolicy="StretchToParent" HeightSizePolicy="CoverChildren" StackLayout.LayoutMethod="HorizontalLeftToRight">
+                  <Children>
+                    <TextWidget WidthSizePolicy="Fixed" SuggestedWidth="110" HeightSizePolicy="CoverChildren" Text="@Name" Brush="Crafting.Property.Name.Text" Brush.FontSize="15" />
+                    <TextWidget WidthSizePolicy="Fixed" SuggestedWidth="55" HeightSizePolicy="CoverChildren" Text="@ValueText" Brush="Crafting.Property.Value.Text" Brush.FontSize="15" />
+                  </Children>
+                </ListPanel>
+                <!--Smaller/dimmer than the value above it (FontSize 15) and wrapped via StretchToParent+CoverChildren, matching how AdvisorVerdictText/AdvisorSuggestionText already wrap in this file - real brush, verified present in SandBox/GUI/Brushes/Crafting.xml.-->
+                <TextWidget WidthSizePolicy="StretchToParent" HeightSizePolicy="CoverChildren" MarginTop="1" Text="@Reason" Brush="Crafting.Popup.Property.Value.Text" Brush.FontSize="12" Brush.TextHorizontalAlignment="Left" />
               </Children>
             </ListPanel>
           </ItemTemplate>
