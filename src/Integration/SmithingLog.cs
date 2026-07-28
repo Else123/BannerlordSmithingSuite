@@ -91,7 +91,12 @@ namespace SmithingSuite.Integration
         // outside an active campaign (e.g. from the main menu); guard explicitly rather than let
         // that happen, per this class's never-throw contract. CampaignTime's own ToString() is
         // the simplest readable rendering that actually exists (day/season/year), so it is used
-        // as-is instead of reinventing a format from GetYear/GetSeasonOfYear/GetDayOfSeason.
+        // as-is instead of reinventing a format from GetYear/GetSeasonOfYear/GetDayOfSeason - but
+        // it renders day-only resolution, so two runs on the same in-game day are otherwise
+        // indistinguishable (code review Slice 6 finding B). CampaignTime.GetHourOfDay
+        // (verified by decompiling TaleWorlds.CampaignSystem.CampaignTime, v1.4.7:
+        // "public int GetHourOfDay => (int)(_numTicks / TimeTicksPerHour % HoursInDay);") is
+        // appended to restore that resolution.
         private static string DescribeCampaignTime()
         {
             try
@@ -101,7 +106,8 @@ namespace SmithingSuite.Integration
                     return "?";
                 }
 
-                return CampaignTime.Now.ToString();
+                CampaignTime now = CampaignTime.Now;
+                return now.ToString() + ", hour " + now.GetHourOfDay;
             }
             catch
             {

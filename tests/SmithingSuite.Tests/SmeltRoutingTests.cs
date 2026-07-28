@@ -124,6 +124,17 @@ namespace SmithingSuite.Tests
             var sumOfCapacities = smiths.Sum(s => s.Capacity);
             Assert.True(plan.Actions.Count <= sumOfCapacities);
             Assert.Equal(sumOfCapacities, plan.Actions.Count);
+
+            // Explicit per-smith assertions (code review Slice 6 finding E.3): the aggregate
+            // count above cannot show that this is the SPILL case in action - hero-1's capacity
+            // is 1 (13/10), hero-2's is 2 (27/10). Research-relevant candidates are planned
+            // first and abundant (count: 100), so once hero-1's single CuriousSmelter-preferred
+            // action is spent, ALL of hero-2's capacity spills onto the same research candidate
+            // too (hero-2 is research's fallback smith, despite holding PracticalSmelter, which
+            // only matters for bulk candidates) - item-bulk is never reached at all.
+            Assert.Equal(1, plan.Actions.Count(a => a.HeroId == "hero-1"));
+            Assert.Equal(2, plan.Actions.Count(a => a.HeroId == "hero-2"));
+            Assert.All(plan.Actions, a => Assert.Equal("item-research", a.ItemId));
         }
 
         [Fact]

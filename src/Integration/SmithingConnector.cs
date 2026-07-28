@@ -176,13 +176,19 @@ namespace SmithingSuite.Integration
                 return cached;
             }
 
+            // Defensive, matching the rest of this file (code review Slice 6 finding E.1):
+            // template.Pieces has no documented non-null guarantee, so a malformed/edge-case
+            // template degrades to "no unopened parts" rather than throwing out of GetSmeltCandidates.
             bool hasUnopenedParts = false;
-            foreach (CraftingPiece piece in template.Pieces)
+            if (template.Pieces != null)
             {
-                if (!behavior.IsOpened(piece, template))
+                foreach (CraftingPiece piece in template.Pieces)
                 {
-                    hasUnopenedParts = true;
-                    break;
+                    if (!behavior.IsOpened(piece, template))
+                    {
+                        hasUnopenedParts = true;
+                        break;
+                    }
                 }
             }
 
