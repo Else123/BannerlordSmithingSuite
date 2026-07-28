@@ -56,12 +56,30 @@ namespace SmithingSuite.UI
 
         // Separate one-shot flags per message (not a single shared bool): OnRefresh can fire every
         // frame, and the "not yet ready" case legitimately happens on the very first tick or two
-        // before GauntletCraftingScreen has populated CraftedItemObject - it must log once so that
-        // state is visible, but must never fire again once the panel has started succeeding, and
-        // must not prevent the success line from ever logging (bug diagnosis: this mixin previously
-        // logged nothing at all on the success path, which is why the bug needed a code read).
+        // before Crafting.GetCurrentCraftedItemObject() has a real design to return - it must log
+        // once so that state is visible, but must never fire again once the panel has started
+        // succeeding, and must not prevent the success line from ever logging (bug diagnosis: this
+        // mixin previously logged nothing at all on the success path, which is why the bug needed a
+        // code read).
         private bool _hasLoggedFirstSuccess;
         private bool _hasLoggedNotYetReady;
+
+        // Root-cause fix (SPEC-SLICE4-5.md "Kontext"): WeaponDesignVM.CraftedItemObject is only ever
+        // assigned in CraftingVM.ExecuteMainAction() - i.e. only after the player clicks the final
+        // Craft button - so during design it was always null and this panel never had data. The fix
+        // reads the same private Crafting field vanilla's own WeaponDesignVM.RefreshStats() reads,
+        // via reflection (WeaponDesignVM exposes no public accessor for it). Cached once resolved
+        // (the field's presence cannot change at runtime for a given game version); if resolution
+        // fails, _cachedCrafting stays null and the NEXT call retries rather than latching a
+        // transient miss as permanent - a future game patch renaming the field must not permanently
+        // disable the panel any more than a genuine one-frame timing miss should.
+        private Crafting _cachedCrafting;
+
+        // One-shot, separate from _hasLoggedFailure (which covers the generic try/catch fail-safe):
+        // this is a specific, actionable diagnosis - "the _crafting field is gone" - that must name
+        // the field so a future maintainer does not have to rediscover this reflection dependency
+        // from a generic exception message.
+        private bool _hasLoggedCraftingFieldMissing;
 
         // Cached identity of the last-scored design (FINDING 5) - the four selected pieces' engine
         // object references and scale percentages, compared field-by-field in DesignUnchanged rather
@@ -373,19 +391,19 @@ namespace SmithingSuite.UI
                     return;
                 }
 
-                WeaponStats stats = ToWeaponStats(vm.CraftedItemObject);
+                WeaponStats stats = ReadCurrentWeaponStats();
                 if (stats == null)
                 {
-                    // Bug fix: do NOT commit the cache here. GauntletCraftingScreen calls
-                    // RefreshItem() from its update loop, and the very first call very likely lands
-                    // before CraftedItemObject is populated - stats is null on that first tick even
-                    // though the player has (or is about to have) a real selection. The old code
-                    // committed the cache in the shared check-and-commit step above before this
-                    // null check ran, so that first failed attempt latched as "the current design",
-                    // every subsequent frame then read as unchanged, and OnRefresh short-circuited
-                    // before ever reaching the scoring code below - the panel stayed hidden for the
-                    // rest of the session no matter what the player crafted. Leaving the cache
-                    // untouched here means the next frame is not "unchanged" yet and retries.
+                    // Do NOT commit the cache here. RefreshFromCurrentItem can run before
+                    // Crafting.GetCurrentCraftedItemObject() has a real design to return (e.g. the
+                    // very first tick, or an incomplete design mid-selection) - stats is null on
+                    // that call even though the player has (or is about to have) a real selection.
+                    // Committing the cache before this null check would latch that failed attempt as
+                    // "the current design", every subsequent frame would then read as unchanged, and
+                    // OnRefresh would short-circuit before ever reaching the scoring code below - the
+                    // panel would stay hidden for the rest of the session no matter what the player
+                    // crafted. Leaving the cache untouched here means the next frame is not
+                    // "unchanged" yet and retries.
                     AdvisorIsVisible = false;
                     if (!_hasLoggedNotYetReady)
                     {
@@ -426,11 +444,85 @@ namespace SmithingSuite.UI
             }
         }
 
-        /// <summary>Reads the item's engine-computed weapon stats without calling into the engine again.</summary>
-        private static WeaponStats ToWeaponStats(ItemObject item)
+        /// <summary>
+        /// Reads the engine's LIVE design preview - not <see cref="WeaponDesignVM.CraftedItemObject"/>,
+        /// which is only ever assigned on the final Craft button click (see the class doc and the
+        /// <c>_cachedCrafting</c> field comment for the full root-cause story). Mirrors vanilla's own
+        /// <c>WeaponDesignVM.RefreshStats()</c>: <c>Crafting.GetCurrentCraftedItemObject()</c> returns
+        /// a cached item that <c>Crafting.ReIndex()</c> regenerates on every piece switch / rescale,
+        /// so it always matches what is currently on screen, and is cheap to call (no
+        /// <c>Crafting.GenerateItem</c>, honouring this class's per-frame budget). The result is
+        /// projected through <see cref="EngineDesignEvaluator.ToWeaponStats"/> - the exact same
+        /// mapping <see cref="EngineDesignEvaluator"/>'s own (expensive) evaluator uses - so this
+        /// cheap path can never silently drift from it.
+        /// </summary>
+        private WeaponStats ReadCurrentWeaponStats()
         {
-            WeaponComponentData weapon = item?.WeaponComponent?.PrimaryWeapon;
+            Crafting crafting = ResolveCrafting();
+            if (crafting == null)
+            {
+                return null;
+            }
+
+            ItemObject item = crafting.GetCurrentCraftedItemObject();
+            if (item == null)
+            {
+                return null;
+            }
+
+            // Usage index: vanilla RefreshStats reads SecondaryUsageSelector.SelectedIndex to
+            // support dual-usage weapons (e.g. a spear that can also be thrown one-handed).
+            // "SecondaryUsageSelector" is confirmed present as a member name in
+            // TaleWorlds.CampaignSystem.ViewModelCollection.dll's metadata, but this session had no
+            // shell/ilspycmd access to decompile WeaponDesignVM and confirm it is a public,
+            // reliably-populated member (vs. private, or only populated for specific templates) -
+            // reflecting onto an unverified member would just trade one unverified assumption for
+            // another, less honestly. Falling back to usage index 0 (a weapon's primary/default
+            // usage - the same index EngineDesignEvaluator's own WeaponComponent.PrimaryWeapon
+            // access already implied before this fix) is the safe default: correct for the
+            // overwhelming majority of single-usage craftable designs, and only wrong for designs
+            // with a selectable secondary usage - a narrower miss than the total blank panel this
+            // fix closes. Revisit once SecondaryUsageSelector is decompile-verified.
+            const int usageIndex = 0;
+            WeaponComponentData weapon = item.GetWeaponWithUsageIndex(usageIndex);
             return weapon == null ? null : EngineDesignEvaluator.ToWeaponStats(weapon, item);
+        }
+
+        /// <summary>
+        /// Resolves <c>WeaponDesignVM</c>'s private <c>_crafting</c> field - there is no public
+        /// accessor (see the class doc). Uses <see cref="BaseViewModelMixin{TViewModel}.GetPrivate{TValue}"/>,
+        /// the mixin base class's own reflection helper (already used and tested by every other
+        /// UIExtenderEx mixin), rather than hand-rolled <c>System.Reflection</c> - one fewer
+        /// reflection-shaped dependency for this class to own. Cached in <see cref="_cachedCrafting"/>
+        /// once resolved; a null result is deliberately NOT cached, so a transient miss (e.g. called
+        /// before the VM has finished constructing) retries on the next call instead of permanently
+        /// disabling the panel - only a genuine, permanent failure (e.g. a future game patch renames
+        /// the field) keeps failing, and that case is logged loudly exactly once via
+        /// <see cref="_hasLoggedCraftingFieldMissing"/> so the cause is obvious in the log instead of
+        /// yet another silently-empty panel.
+        /// </summary>
+        private Crafting ResolveCrafting()
+        {
+            if (_cachedCrafting != null)
+            {
+                return _cachedCrafting;
+            }
+
+            Crafting crafting = GetPrivate<Crafting>("_crafting");
+            if (crafting == null)
+            {
+                if (!_hasLoggedCraftingFieldMissing)
+                {
+                    _hasLoggedCraftingFieldMissing = true;
+                    SmithingLog.Line("WeaponDesignAdvisorMixin: could not resolve WeaponDesignVM's "
+                        + "private field '_crafting' via GetPrivate<Crafting> - advisor panel disabled "
+                        + "until this is fixed for the current game version");
+                }
+                return null;
+            }
+
+            _cachedCrafting = crafting;
+            return _cachedCrafting;
         }
 
         private void UpdateAxes(WeaponScore score)
@@ -580,7 +672,19 @@ namespace SmithingSuite.UI
             return new PieceCatalogue(vm.CurrentCraftedWeaponTemplateId, pieces, ScaleSteps);
         }
 
-        /// <summary>The player's current selection, as the optimizer's starting point.</summary>
+        /// <summary>
+        /// The player's current selection, as the optimizer's starting point.
+        ///
+        /// Deliberately still reads the four public <c>Selected*Piece</c> VM properties rather than
+        /// <c>crafting.CurrentWeaponDesign.UsedPieces</c> (considered while fixing the
+        /// <c>CraftedItemObject</c> bug above): unlike <c>CraftedItemObject</c>, these properties are
+        /// NOT the "only populated on Craft click" case - they update live as the player picks each
+        /// piece, which is exactly why <see cref="ReadPieceIdentity"/> already reads them every frame
+        /// for change detection with correct results. Both sources are ultimately backed by the same
+        /// engine <c>_crafting</c> state, so switching would add another reflection-shaped dependency
+        /// to this optimizer-seeding path for no correctness gain - not worth the risk on a future
+        /// game update. Keep this the way it is unless a concrete case shows the two sources diverge.
+        /// </summary>
         private static DesignCandidate BuildSeed(WeaponDesignVM vm)
         {
             var pieces = new List<DesignPiece>();
