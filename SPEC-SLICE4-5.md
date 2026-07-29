@@ -284,19 +284,20 @@ dotnet test BannerlordSmithingSuite\tests\SmithingSuite.Tests\SmithingSuite.Test
 ```
 In-game: AC12-AC15 on the test save.
 
-## Originaltext
+## Original request
 
-> beim Advisor geht es mir eher darum, dass wenn ich eine Waffe ausgewählt habe, dass der mir
-> diese Waffe optimiert in der Form, in der ich sie ausgewählt habe, sprich quasi die
-> bestmögliche Waffe rausholt aus dem, was ich habe, beispielsweise wenn ich ein zweihändiger
-> Tischschwert habe, dass dieses dann halt auch von der Länge der einzelnen Teile am besten
-> ausgesucht ist. Das ist natürlich dann sowas wie Länge, bin ich beritten oder nicht eine Option,
-> wie schnell kann ich das Schwert schwingen und sowas ist dann halt interessant, damit ich halt
-> gut durchkomme und weniger wie viel Schaden es tatsächlich macht
+*Translated from the user's original German - not verbatim English utterances.*
 
-> ich würde den crafting advisor direkt im vanilla screen drin haben ansonsten macht er nicht so
-> viel sinn und die tiefe sollte auch für spätere und vor allem in der kombination mit anderen
-> mods geschaut werden aber am besten so tief wie möglich
+> With the advisor, what I'm really after is that once I've picked a weapon, it optimizes that
+> weapon in the form I picked it, meaning it basically gets the best possible weapon out of what I
+> have - for example, if I have a two-handed table sword, that its individual pieces are also
+> picked for the best possible length. That's naturally things like length, whether I'm mounted or
+> not is one factor, how fast I can swing the sword - stuff like that is what's interesting, so
+> that I actually get through well, and less about how much damage it actually does.
+
+> I'd want the crafting advisor directly inside the vanilla screen, otherwise it doesn't make much
+> sense, and the depth should also be considered for later, especially in combination with other
+> mods, but ideally as deep as possible.
 
 ## Status
 

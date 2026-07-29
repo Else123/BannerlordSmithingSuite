@@ -173,13 +173,15 @@ dotnet test BannerlordSmithingSuite\tests\SmithingSuite.Tests\SmithingSuite.Test
 All 21 existing tests must stay green **without being edited** - this slice reorders, it does not
 change what is allowed.
 
-## Originaltext
+## Original request
 
-> und da natürlich auch die Aufgaben auf die Companions verteilen, die jeweiligen Stärken haben,
-> sprich irgendwelche Perks gerade gesetzt haben und somit da einfach ein bisschen mehr Tiefgang
-> im Smithing ist, ohne den manuellen Grad.
+*Translated from the user's original German - not verbatim English utterances.*
 
-> weiter mit allem
+> And of course also distribute the tasks among the companions who have the respective strengths,
+> meaning whatever perks they currently have set, so there's just a bit more depth to the
+> smithing, without the manual grind.
+
+> Go ahead with everything.
 
 ## Status
 

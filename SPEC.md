@@ -356,37 +356,37 @@ inventing numbers, present named axes with explanations rather than one opaque s
 weights MCM-tunable. Prior art to differentiate against (feature-level only, no code):
 Nexus "Smithing Optimizer" (11705 / 10541) and "Smithing Value" (3184).
 
-## Originaltext
+## Original request
 
-> ich möchte jetzt gern noch ein smithing mod machen
+*Translated from the user's original German - not verbatim English utterances.*
 
-> primär ist es tatsächlich die produktion die ich haben möchte das skill leveling ist für mich
-> ein sekundärer nebeneffekt ich habe bisher mods gehabt die das ganze feature quasi
-> rausgenommen haben die die ausdauer komplett ignoriert haben und damit das smithing sehr
-> überpowert haben [...] ich hätte gerne quasi die spielidee vom smithing trotzdem weiter
+> I'd like to make a smithing mod now too.
 
-> smelten und refinen soll automatisiert erfolgen und das craften von waffen soll mit mehr infos
-> versehen werden was am ende gut und was schlecht ist vor allem solche sachen wie schnelligkeit
-> der waffe ist super wichtig während der waffenschaden ab einem gewissen grad auch irgendwann
-> egal wird
+> What I actually want is primarily the production - skill leveling is a secondary side effect
+> for me. I've had mods before that basically removed the whole feature, that completely ignored
+> the stamina and made smithing very overpowered that way [...] I'd like to keep the game idea of
+> smithing intact regardless.
 
-> Da bei mir die Produktionsautomatisierung im Vordergrund steht, fände ich cool, wenn die
-> Companions automatisch durchgeschaltet werden. [...] und da natürlich auch die Aufgaben auf die
-> Companions verteilen, die jeweiligen Stärken haben, sprich irgendwelche Perks gerade gesetzt
-> haben
+> Smelting and refining should happen automated, and crafting weapons should get more information
+> about what's good and what's bad in the end - especially things like the weapon's speed, which
+> is super important, while the weapon damage stops mattering at some point past a certain degree.
 
-> button wäre gut vielleicht wie ort trader button button bei jeder stadt
+> Since production automation is my main focus, it would be cool if the companions get cycled
+> through automatically. [...] and of course distribute the tasks among the companions according
+> to their respective strengths, meaning whatever perks they currently have set.
 
-> Du kannst dir in BetterSmithing einfach Sachen abschauen, aber das soll am Ende nicht
-> koexistent sein [...] Es soll quasi ein Autotrader für Smithing sein mit mehr, mit einer
-> höheren Mächtigkeit
+> A button would be good, maybe like the town trader button - a button at every town.
 
-> beim Advisor geht es mir eher darum, dass wenn ich eine Waffe ausgewählt habe, dass der mir
-> diese Waffe optimiert in der Form, in der ich sie ausgewählt habe, sprich quasi die
-> bestmögliche Waffe rausholt aus dem, was ich habe [...] Das ist natürlich dann sowas wie Länge,
-> bin ich beritten oder nicht eine Option, wie schnell kann ich das Schwert schwingen
+> You can just take a look at things in BetterSmithing, but in the end it shouldn't coexist with
+> it [...] It should basically be an Autotrader for smithing, but with more, with a higher level
+> of power.
 
-> slice0 darf sie direkt scharf schalten, da ich in einem Testspiel das Zeug mache.
+> With the advisor, what I'm really after is that once I've picked a weapon, it optimizes that
+> weapon in the form I picked it, meaning it basically gets the best possible weapon out of what I
+> have [...] That's of course things like length, whether I'm mounted or not is one option, how
+> fast can I swing the sword.
+
+> Slice 0 is allowed to go live directly, since I'm doing this stuff in a test game.
 
 ## Status
 

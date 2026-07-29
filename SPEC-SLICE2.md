@@ -181,13 +181,15 @@ dotnet test BannerlordSmithingSuite\tests\SmithingSuite.Tests\SmithingSuite.Test
 ```
 In-game: AC10-AC13 on the test save, BetterSmithing disabled.
 
-## Originaltext
+## Original request
 
-> an sich spiele ich das momentan oder wenn ich das manuell mache, refine ich tatsächlich mehr,
-> weil ab einem gewissen Grad sind meine gesmittelten Waffen sowieso stärker und besser als alles,
-> was irgendwie auf dem Markt ist
+*Translated from the user's original German - not verbatim English utterances.*
 
-> mache dann weiter mit der umsetzung
+> Actually, the way I play this right now, or when I do it manually, I actually refine more,
+> because past a certain point my smithed weapons are stronger and better anyway than anything you
+> can get on the market.
+
+> Go ahead and continue with the implementation then.
 
 ## Status
 

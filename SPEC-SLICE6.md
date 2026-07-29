@@ -156,14 +156,15 @@ dotnet test BannerlordSmithingSuite\tests\SmithingSuite.Tests\SmithingSuite.Test
 ```
 In-game: AC6-AC10 on the test save, reading `smithingsuite.log`.
 
-## Originaltext
+## Original request
 
-> Ein Hinweis, der mir im Base Game überhaupt nicht gefällt und jetzt natürlich wieder auftritt,
-> ist, Stamina wird nur generiert, wenn man an derselben Stelle wartet. Ich finde, Stamina sollte
-> auch generiert werden, wenn man von A nach B reist, da das ja die Schmiede Stamina überhaupt
-> nicht betrifft.
+*Translated from the user's original German - not verbatim English utterances.*
 
-> 50/50 ist gut
+> One thing I don't like at all in the base game, and which of course comes up again here, is that
+> stamina only regenerates if you wait in the same spot. I think stamina should also regenerate
+> while traveling from A to B, since that doesn't affect the smithing stamina at all.
+
+> 50/50 is good.
 
 ## Status
 
