@@ -22,6 +22,11 @@ namespace SmithingSuite.Integration
     {
         private const long MaxLogSizeBytes = 5L * 1024 * 1024;
 
+        // Safety net for callers outside a BeginRun/EndRun block (see _runInProgress below): if
+        // one of those callers forgets an explicit Flush(), the buffer must still never grow
+        // unbounded across a whole play session - flush automatically once it reaches this size.
+        private const int MaxBufferedLinesOutsideRun = 500;
+
         private static readonly string LogDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
             "Mount and Blade II Bannerlord", "SmithingSuite");
@@ -34,6 +39,14 @@ namespace SmithingSuite.Integration
         // lines, and hundreds of file opens per click is a real stutter risk. EndRun() flushes
         // this in one operation.
         private static readonly List<string> _bufferedLines = new List<string>();
+
+        // True only between BeginRun() and EndRun(). The batching optimisation above is a
+        // hot-path win for the town-menu run only (hundreds of lines per click); every other
+        // caller (travel stamina's hourly tick, the crafting-screen advisor, the design
+        // evaluator, UI bridge startup) is not a hot path and must reach disk promptly, or a
+        // session that never triggers a run loses its diagnostics silently. AppendLine consults
+        // this flag to decide whether the safety-net auto-flush below applies.
+        private static bool _runInProgress;
 
         /// <summary>
         /// Mirrors <see cref="SmithingSuiteConfig.VerboseLogging"/> so callers building an
@@ -75,6 +88,10 @@ namespace SmithingSuite.Integration
             {
                 return;
             }
+
+            // Marks the run-scoped batching window open - see _runInProgress's doc. Set before
+            // the header lines below so they too are treated as part of the batched run.
+            _runInProgress = true;
 
             AppendLine(string.Empty);
             AppendLine("========================================================================");
@@ -184,13 +201,26 @@ namespace SmithingSuite.Integration
         }
 
         /// <summary>
-        /// Flushes this run's buffered lines to disk in a single file operation, then clears the
-        /// buffer. MUST be called exactly once at the end of every run - including the early
-        /// "nothing to do" return - via try/finally, otherwise this run's lines are silently
-        /// lost. Trade-off accepted for a diagnostics log: if the process dies mid-run, the
-        /// buffer (and this run's trace) is lost with it rather than being flushed line-by-line.
+        /// Ends the run-scoped batching window and flushes whatever this run buffered. MUST be
+        /// called exactly once at the end of every run - including the early "nothing to do"
+        /// return - via try/finally, otherwise this run's lines are silently lost. Trade-off
+        /// accepted for a diagnostics log: if the process dies mid-run, the buffer (and this
+        /// run's trace) is lost with it rather than being flushed line-by-line.
         /// </summary>
         public static void EndRun()
+        {
+            Flush();
+            _runInProgress = false;
+        }
+
+        /// <summary>
+        /// Flushes any buffered lines to disk in a single file operation, then clears the buffer.
+        /// Callers outside a BeginRun/EndRun block (travel stamina's hourly tick, the
+        /// crafting-screen advisor, the design evaluator, UI bridge startup) are not the hot path
+        /// the run-scoped batching exists for, so they must call this after every line they log
+        /// to reach disk promptly instead of waiting for a town-menu run that may never happen.
+        /// </summary>
+        public static void Flush()
         {
             if (_bufferedLines.Count == 0)
             {
@@ -205,7 +235,7 @@ namespace SmithingSuite.Integration
             }
             catch
             {
-                // File I/O must never throw into campaign code - silently drop this run's lines
+                // File I/O must never throw into campaign code - silently drop these lines
                 // rather than retry in a loop.
             }
             finally
@@ -216,9 +246,18 @@ namespace SmithingSuite.Integration
 
         private static void AppendLine(string line)
         {
-            // Buffered in memory only - see EndRun() for why (one file open/close per run
-            // instead of per line) and for where the buffer actually reaches disk.
+            // Buffered in memory only - see Flush()/EndRun() for where the buffer actually
+            // reaches disk (one file open/close per run instead of per line).
             _bufferedLines.Add(line);
+
+            // Safety net (see _runInProgress's doc): outside a run-scoped block nothing else
+            // guarantees these lines ever reach disk - if a caller forgets its explicit Flush()
+            // and the buffer keeps growing, flush anyway rather than let it grow unbounded for
+            // the rest of the session.
+            if (!_runInProgress && _bufferedLines.Count >= MaxBufferedLinesOutsideRun)
+            {
+                Flush();
+            }
         }
 
         private static void EnsureDirectory()

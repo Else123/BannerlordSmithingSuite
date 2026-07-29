@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Helpers;
 using SmithingSuite.Logic;
@@ -120,6 +121,18 @@ namespace SmithingSuite.Integration
                 LogRunSummary(smithsBefore, smithsAfter, smeltedCountByHero, refinedCountByHero);
                 _connector.Report(BuildSummary(smithsBefore, smithsAfter, smeltedCountByHero, refinedCountByHero));
             }
+            catch (Exception ex)
+            {
+                // This is the primary feature's only entry point, invoked directly from the
+                // game's menu callback - every other entry point in this mod is deliberately
+                // fail-safe (the advisor mixin, TravelStaminaBehavior, EngineDesignEvaluator,
+                // SmithingLog itself), so an unhandled exception here would be the one place an
+                // exception escapes into a crash dialog instead of degrading gracefully. Log the
+                // detail for diagnosis, then tell the player honestly that the run failed rather
+                // than silently doing nothing or letting the game crash.
+                SmithingLog.Line("SmithingTownConsequence: run failed with an unexpected exception - " + ex);
+                _connector.Report(RunFailedMessage());
+            }
             finally
             {
                 // Flushes this run's buffered trace to disk exactly once. try/finally so the
@@ -150,7 +163,15 @@ namespace SmithingSuite.Integration
             Dictionary<string, int> smeltedCountByHero = ExecuteSmeltPlan(plan);
             LogSmeltedTotals(smeltedCountByHero, budgetedSmiths);
 
-            SmithingLog.Screen("Smithing Suite: smelted " + SumValues(smeltedCountByHero) + " item(s).");
+            int smeltedCount = SumValues(smeltedCountByHero);
+            if (smeltedCount > 0)
+            {
+                // Only report on screen when this phase actually did something - the aggregate
+                // "nothing to do" message (SmithingTownConsequence) already covers the case where
+                // both phases produced nothing, so an unconditional zero-count line here would
+                // just double up a "nothing happened" toast on the common exhausted-stamina click.
+                SmithingLog.Screen("Smithing Suite: smelted " + smeltedCount + " item(s).");
+            }
             return smeltedCountByHero;
         }
 
@@ -220,7 +241,14 @@ namespace SmithingSuite.Integration
             MaterialStock stockAfter = _connector.GetMaterialStock();
             LogMaterialStock("Material stock AFTER", stockAfter);
 
-            SmithingLog.Screen("Smithing Suite: refined " + SumValues(refinedCountByHero) + " item(s).");
+            int refinedCount = SumValues(refinedCountByHero);
+            if (refinedCount > 0)
+            {
+                // See RunSmeltPhase's matching guard - de-noises the common exhausted-stamina
+                // click, which otherwise showed two "0 item(s)" toasts on top of the aggregate
+                // "nothing to do" message.
+                SmithingLog.Screen("Smithing Suite: refined " + refinedCount + " item(s).");
+            }
             return refinedCountByHero;
         }
 
@@ -654,6 +682,13 @@ namespace SmithingSuite.Integration
         {
             return new TextObject(
                 "{=SSNothingToSmelt}Nothing to smelt: every smith is out of crafting stamina, or there are no unlocked smeltable items.",
+                null).ToString();
+        }
+
+        private static string RunFailedMessage()
+        {
+            return new TextObject(
+                "{=SSRunFailed}Automatic smithing failed unexpectedly and was stopped. See smithingsuite.log for details.",
                 null).ToString();
         }
     }

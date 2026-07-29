@@ -28,6 +28,14 @@ namespace SmithingSuite.UI
                 SmithingLog.Line("UIExtenderEx unavailable (" + ex.GetType().Name
                     + ") - inline crafting advisor disabled, everything else unaffected");
             }
+            finally
+            {
+                // Runs at OnSubModuleLoad, long before any campaign (and any town-menu run) can
+                // exist - the batching optimisation does not apply here, so flush immediately or
+                // this line waits for a run that may be a whole session away (see
+                // SmithingLog.Flush()).
+                SmithingLog.Flush();
+            }
         }
 
         // Kept out of Register() and marked non-inlinable: referencing UIExtenderEx types inside

@@ -236,6 +236,11 @@ namespace SmithingSuite.Integration
 
             _hasLoggedFailure = true;
             SmithingLog.Line("EngineDesignEvaluator: " + reason);
+            // Evaluate() runs inside DesignOptimizer's "Suggest best" search, entirely outside
+            // any SmithingBehavior run - the batching optimisation does not apply, so flush
+            // immediately or this one-shot diagnosis may never reach disk this session (see
+            // SmithingLog.Flush()).
+            SmithingLog.Flush();
         }
     }
 }

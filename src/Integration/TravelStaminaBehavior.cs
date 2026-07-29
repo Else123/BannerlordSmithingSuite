@@ -161,6 +161,10 @@ namespace SmithingSuite.Integration
             }
 
             SmithingLog.Line("Travel stamina recovery: " + heroesRecovered + " hero(es), +" + totalGain + " total.");
+            // This tick is never inside a SmithingBehavior run, so the batching optimisation does
+            // not apply here - flush immediately or the line only reaches disk if/when a
+            // town-menu run happens to occur later in the session (see SmithingLog.Flush()).
+            SmithingLog.Flush();
         }
     }
 }
