@@ -96,8 +96,13 @@
     <Compile Include="Logic\SmeltCandidate.cs" />
     <Compile Include="Logic\SmeltPlan.cs" />
     <Compile Include="Logic\SmeltPlanner.cs" />
+    <Compile Include="Logic\SmeltRoutingReason.cs" />
     <Compile Include="Logic\RefinePlan.cs" />
     <Compile Include="Logic\RefinePlanner.cs" />
+    <Compile Include="Logic\ISmithingConnector.cs" />
+    <Compile Include="Logic\ISmithingTrace.cs" />
+    <Compile Include="Logic\RunReport.cs" />
+    <Compile Include="Logic\SmithingRun.cs" />
     <Compile Include="Advisor\AdvisorPresentation.cs" />
     <Compile Include="Advisor\AdvisorSearchPolicy.cs" />
     <Compile Include="Advisor\ArmourModel.cs" />
@@ -111,10 +116,10 @@
     <Compile Include="Advisor\WeaponScore.cs" />
     <Compile Include="Advisor\WeaponStats.cs" />
     <Compile Include="Integration\EngineDesignEvaluator.cs" />
-    <Compile Include="Integration\ISmithingConnector.cs" />
     <Compile Include="Integration\SmithingConnector.cs" />
     <Compile Include="Integration\SmithingBehavior.cs" />
     <Compile Include="Integration\SmithingLog.cs" />
+    <Compile Include="Integration\SmithingLogTrace.cs" />
     <Compile Include="Integration\TravelStaminaBehavior.cs" />
     <Compile Include="SmithingSuiteSubModule.cs" />
     <Compile Include="SmithingSuiteConfig.cs" />

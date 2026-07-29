@@ -1,12 +1,14 @@
 using System.Collections.Generic;
-using SmithingSuite.Logic;
 
-namespace SmithingSuite.Integration
+namespace SmithingSuite.Logic
 {
     /// <summary>
-    /// The engine boundary for smelting automation. Its sole purpose is to keep
+    /// The engine boundary for smelting automation. Its sole purpose is to keep the rest of
     /// <see cref="SmithingSuite.Logic"/> free of TaleWorlds types: this interface references
-    /// only Logic value types and BCL types, never anything engine-specific.
+    /// only Logic value types and BCL types, never anything engine-specific. Lives in Logic
+    /// (moved from Integration by Refactor A) because <see cref="SmithingRun"/> - the two-phase
+    /// orchestration - depends on it directly, and orchestration must stay in the engine-free,
+    /// test-compiled layer.
     /// </summary>
     public interface ISmithingConnector
     {

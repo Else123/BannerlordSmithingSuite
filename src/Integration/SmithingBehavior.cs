@@ -13,25 +13,23 @@ namespace SmithingSuite.Integration
     /// <summary>
     /// Owns the "Automatic smithing" town menu option. Mirrors the AutoTrader's town-menu
     /// pattern: registers on <see cref="CampaignEvents.OnSessionLaunchedEvent"/>, gates the
-    /// option through <see cref="SettlementAccessModel"/>, then on trigger builds a snapshot,
-    /// asks <see cref="SmeltPlanner"/> for a plan, executes it through
-    /// <see cref="ISmithingConnector"/>, and reports a summary. Contains no TaleWorlds smithing
-    /// logic of its own - that lives in the connector and the engine-free planner.
+    /// option through <see cref="SettlementAccessModel"/>, then on trigger delegates the
+    /// two-phase run to <see cref="SmithingRun"/> (engine-free, Refactor A) and reports the
+    /// resulting <see cref="RunReport"/>. Contains no smelt/refine orchestration or TaleWorlds
+    /// smithing logic of its own anymore - that lives in the connector and the engine-free
+    /// planner/orchestration layer.
     ///
-    /// Diagnostics: every run also writes a detailed trace via <see cref="SmithingLog"/> (smith
-    /// pools, candidates, plans, per-smith totals) so a tester can verify every acceptance
-    /// criterion from one town-menu click without attaching a debugger. Per-action execution
-    /// detail (success/failure and why) is logged by <see cref="SmithingConnector"/> itself,
-    /// since it is the only layer that knows the reason a specific action failed.
+    /// Diagnostics: every run also writes a detailed trace via <see cref="SmithingLogTrace"/> (an
+    /// <see cref="ISmithingTrace"/> implementation backed by <see cref="SmithingLog"/>) so a
+    /// tester can verify every acceptance criterion from one town-menu click without attaching a
+    /// debugger. Per-action execution detail (success/failure and why) is logged by
+    /// <see cref="SmithingConnector"/> itself, since it is the only layer that knows the reason a
+    /// specific action failed.
     /// </summary>
     public class SmithingBehavior : CampaignBehaviorBase
     {
-        // Matches MaterialStock's own slot count (IronOre=0 .. Charcoal=8) - duplicated here
-        // only for the diagnostics log, which reads material counts through the public Get()
-        // accessor rather than reaching into MaterialStock internals.
-        private const int MaterialOrdinalCount = 9;
-
         private readonly ISmithingConnector _connector;
+        private readonly ISmithingTrace _trace = new SmithingLogTrace();
 
         public SmithingBehavior(ISmithingConnector connector)
         {
@@ -101,25 +99,18 @@ namespace SmithingSuite.Integration
                 SmithingLog.BeginRun(settlementName);
                 SmithingLog.Screen("Smithing Suite: running at " + settlementName + "...");
 
-                IReadOnlyList<SmithSnapshot> smithsBefore = _connector.GetSmiths();
-                Dictionary<string, int> smeltedCountByHero = RunSmeltPhase(smithsBefore);
+                // Read here (not inside SmithingRun) because SmithingRun is engine-free and must
+                // not reference SmithingSuiteConfig - see SmithingRun.Execute's doc.
+                int smeltSharePercent = SmithingSuiteConfig.SmeltStaminaSharePercent;
+                RunReport report = SmithingRun.Execute(_connector, smeltSharePercent, _trace);
 
-                // Smelting produces the raw materials refining consumes (ore, wood -> iron chain,
-                // charcoal), so it must run first, and refining must plan against a FRESH
-                // post-smelt snapshot of both stamina and material stock rather than smithsBefore -
-                // both have changed by the time refining plans.
-                Dictionary<string, int> refinedCountByHero = RunRefinePhase();
-
-                if (smeltedCountByHero.Count == 0 && refinedCountByHero.Count == 0)
+                if (report.NothingHappened)
                 {
-                    SmithingLog.Line("Nothing to do this run.");
                     _connector.Report(NothingToDoMessage());
                     return;
                 }
 
-                IReadOnlyList<SmithSnapshot> smithsAfter = _connector.GetSmiths();
-                LogRunSummary(smithsBefore, smithsAfter, smeltedCountByHero, refinedCountByHero);
-                _connector.Report(BuildSummary(smithsBefore, smithsAfter, smeltedCountByHero, refinedCountByHero));
+                _connector.Report(BuildSummary(report));
             }
             catch (Exception ex)
             {
@@ -142,530 +133,21 @@ namespace SmithingSuite.Integration
             }
         }
 
-        private Dictionary<string, int> RunSmeltPhase(IReadOnlyList<SmithSnapshot> smiths)
-        {
-            SmithingLog.Section("SMELT phase");
-            LogSmithPool(smiths);
-
-            // Slice 6 fix: smelting used to plan against the smith's FULL stamina and consume all
-            // of it, leaving refining only the integer-division remainder (0 capacity in 60 of 70
-            // observed smith-phases). Budget smelting down to its configured share; the REFINE
-            // phase keeps taking its own fresh, unbudgeted snapshot afterwards, so it naturally
-            // sees the untouched remainder - see SPEC-SLICE6.md "A. Phase stamina budget".
-            IReadOnlyList<SmithSnapshot> budgetedSmiths = ApplySmeltStaminaBudget(smiths);
-
-            IReadOnlyList<SmeltCandidate> candidates = _connector.GetSmeltCandidates();
-            LogSmeltCandidates(candidates);
-
-            SmeltPlan plan = SmeltPlanner.Plan(budgetedSmiths, candidates);
-            LogSmeltPlan(plan, budgetedSmiths, candidates);
-
-            Dictionary<string, int> smeltedCountByHero = ExecuteSmeltPlan(plan);
-            LogSmeltedTotals(smeltedCountByHero, budgetedSmiths);
-
-            int smeltedCount = SumValues(smeltedCountByHero);
-            if (smeltedCount > 0)
-            {
-                // Only report on screen when this phase actually did something - the aggregate
-                // "nothing to do" message (SmithingTownConsequence) already covers the case where
-                // both phases produced nothing, so an unconditional zero-count line here would
-                // just double up a "nothing happened" toast on the common exhausted-stamina click.
-                SmithingLog.Screen("Smithing Suite: smelted " + smeltedCount + " item(s).");
-            }
-            return smeltedCountByHero;
-        }
-
-        // Maps each smith to a copy whose stamina is scaled down to the configured smelt share,
-        // so SmeltPlanner never sees - and therefore can never spend - the stamina reserved for
-        // refining. Also logs full vs. budgeted stamina and the resulting capacity per smith, so
-        // the split that used to be invisible in smithingsuite.log is now the first thing a
-        // tester sees in the SMELT phase. The clamp-and-floor arithmetic itself now lives in
-        // SmithSnapshot.ForSmeltShare (engine-free Logic layer, code review Slice 6 finding C) -
-        // this method is just the log-and-loop wrapper around it.
-        private static IReadOnlyList<SmithSnapshot> ApplySmeltStaminaBudget(IReadOnlyList<SmithSnapshot> smiths)
-        {
-            int sharePercent = SmithingSuiteConfig.SmeltStaminaSharePercent;
-            // The configured value is logged as-is (not re-clamped here) - the clamp is Logic's
-            // job (SmithSnapshot.ForSmeltShare), and each per-smith line below already shows the
-            // resulting budgetedStamina/smeltCapacity, so a reader still sees the effective share.
-            LogStaminaBudgetHeader(sharePercent);
-
-            var budgeted = new List<SmithSnapshot>(smiths.Count);
-            foreach (SmithSnapshot smith in smiths)
-            {
-                SmithSnapshot budgetedSmith = SmithSnapshot.ForSmeltShare(smith, sharePercent);
-                LogStaminaBudget(smith, budgetedSmith);
-                budgeted.Add(budgetedSmith);
-            }
-
-            return budgeted;
-        }
-
-        private static void LogStaminaBudgetHeader(int sharePercent)
-        {
-            if (!SmithingLog.IsVerbose)
-            {
-                return;
-            }
-
-            SmithingLog.Line("Stamina budget (smelt share=" + sharePercent + "%):");
-        }
-
-        private static void LogStaminaBudget(SmithSnapshot fullSmith, SmithSnapshot budgetedSmith)
-        {
-            if (!SmithingLog.IsVerbose)
-            {
-                return;
-            }
-
-            SmithingLog.Line("  " + fullSmith.Name + ": fullStamina=" + fullSmith.Stamina
-                + ", budgetedStamina=" + budgetedSmith.Stamina + ", smeltCapacity=" + budgetedSmith.Capacity);
-        }
-
-        private Dictionary<string, int> RunRefinePhase()
-        {
-            SmithingLog.Section("REFINE phase");
-
-            MaterialStock stockBefore = _connector.GetMaterialStock();
-            LogMaterialStock("Material stock BEFORE", stockBefore);
-
-            IReadOnlyList<SmithSnapshot> smiths = _connector.GetSmiths();
-            LogRefineSmithPool(smiths);
-
-            // No floors in this slice (null) - fully aggressive refining per the approved policy.
-            RefinePlan plan = RefinePlanner.Plan(smiths, stockBefore, null);
-            LogRefinePlan(plan, smiths);
-
-            Dictionary<string, int> refinedCountByHero = ExecuteRefinePlan(plan);
-
-            MaterialStock stockAfter = _connector.GetMaterialStock();
-            LogMaterialStock("Material stock AFTER", stockAfter);
-
-            int refinedCount = SumValues(refinedCountByHero);
-            if (refinedCount > 0)
-            {
-                // See RunSmeltPhase's matching guard - de-noises the common exhausted-stamina
-                // click, which otherwise showed two "0 item(s)" toasts on top of the aggregate
-                // "nothing to do" message.
-                SmithingLog.Screen("Smithing Suite: refined " + refinedCount + " item(s).");
-            }
-            return refinedCountByHero;
-        }
-
-        private Dictionary<string, int> ExecuteSmeltPlan(SmeltPlan plan)
-        {
-            SmithingLog.Line("Execution:");
-            var smeltedCountByHero = new Dictionary<string, int>();
-            foreach (SmeltAction action in plan.Actions)
-            {
-                if (!_connector.ExecuteSmelt(action.HeroId, action.ItemId))
-                {
-                    continue;
-                }
-
-                int countSoFar;
-                smeltedCountByHero.TryGetValue(action.HeroId, out countSoFar);
-                smeltedCountByHero[action.HeroId] = countSoFar + 1;
-            }
-
-            return smeltedCountByHero;
-        }
-
-        private Dictionary<string, int> ExecuteRefinePlan(RefinePlan plan)
-        {
-            SmithingLog.Line("Execution:");
-            var refinedCountByHero = new Dictionary<string, int>();
-            foreach (RefineAction action in plan.Actions)
-            {
-                if (!_connector.ExecuteRefine(action.HeroId, action.FormulaIndex))
-                {
-                    continue;
-                }
-
-                int countSoFar;
-                refinedCountByHero.TryGetValue(action.HeroId, out countSoFar);
-                refinedCountByHero[action.HeroId] = countSoFar + 1;
-            }
-
-            return refinedCountByHero;
-        }
-
-        private static void LogSmithPool(IReadOnlyList<SmithSnapshot> smiths)
-        {
-            if (!SmithingLog.IsVerbose)
-            {
-                return;
-            }
-
-            SmithingLog.Line("Smith pool (" + smiths.Count + "):");
-            foreach (SmithSnapshot smith in smiths)
-            {
-                SmithingLog.Line("  " + smith.Name + ": stamina=" + smith.Stamina + "/" + smith.MaxStamina
-                    + ", smeltEnergyCost=" + smith.SmeltEnergyCost + ", capacity=" + smith.Capacity
-                    + ", " + DescribePerks(smith));
-            }
-        }
-
-        // Class/value/template per candidate is what proves AC1/AC2 in the log: research
-        // candidates (unopened template parts) must appear ordered before bulk ones, and within a
-        // class, descending by value - see SmeltPlanner for the policy this log line verifies.
-        private static void LogSmeltCandidates(IReadOnlyList<SmeltCandidate> candidates)
-        {
-            if (!SmithingLog.IsVerbose)
-            {
-                return;
-            }
-
-            SmithingLog.Line("Smelt candidates (" + candidates.Count + "):");
-            foreach (SmeltCandidate candidate in candidates)
-            {
-                string lockNote = candidate.IsLocked ? " [LOCKED]" : "";
-                SmithingLog.Line("  " + candidate.Name + " x" + candidate.Count + lockNote
-                    + " [" + CandidateClass(candidate) + ", value=" + candidate.Value
-                    + ", template=" + candidate.TemplateId + "]");
-            }
-        }
-
-        private static void LogSmeltPlan(SmeltPlan plan, IReadOnlyList<SmithSnapshot> smiths,
-            IReadOnlyList<SmeltCandidate> candidates)
-        {
-            if (!SmithingLog.IsVerbose)
-            {
-                return;
-            }
-
-            // Computed once per plan (not per action, code review Slice 6 finding D): whether
-            // ANY smith in the party holds the relevant perk at all. Needed so
-            // DescribeSmeltRoutingReason can tell "no CuriousSmelter/PracticalSmelter anywhere
-            // in the roster" apart from "one exists but is currently out of capacity" - without
-            // this, both cases produced the same plausible-but-sometimes-false log line.
-            bool anyCuriousSmelterInParty = AnyHasCuriousSmelter(smiths);
-            bool anyPracticalSmelterInParty = AnyHasPracticalSmelter(smiths);
-
-            SmithingLog.Line("Smelt plan: " + plan.Actions.Count + " action(s).");
-            foreach (SmeltAction action in plan.Actions)
-            {
-                SmithSnapshot smith = FindSmith(smiths, action.HeroId);
-                SmeltCandidate candidate = FindCandidate(candidates, action.ItemId);
-                SmithingLog.Line("  " + HeroDisplayName(smiths, action.HeroId) + " -> "
-                    + ItemDisplayName(candidates, action.ItemId)
-                    + " (" + DescribeSmeltRoutingReason(smith, candidate, anyCuriousSmelterInParty, anyPracticalSmelterInParty) + ")");
-            }
-        }
-
-        private static bool AnyHasCuriousSmelter(IReadOnlyList<SmithSnapshot> smiths)
-        {
-            foreach (SmithSnapshot smith in smiths)
-            {
-                if (smith.HasCuriousSmelter)
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        private static bool AnyHasPracticalSmelter(IReadOnlyList<SmithSnapshot> smiths)
-        {
-            foreach (SmithSnapshot smith in smiths)
-            {
-                if (smith.HasPracticalSmelter)
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        private static string CandidateClass(SmeltCandidate candidate)
-        {
-            return candidate.TemplateHasUnopenedParts ? "research" : "bulk";
-        }
-
-        // Derived (never guessed) from the candidate's class and whether the CHOSEN smith holds
-        // the matching perk - the plan itself only carries HeroId + ItemId, so this is the only
-        // place that can reconstruct why SmeltPlanner picked this particular smith. Mirrors the
-        // preferred/fallback split in SmeltPlanner.AssignmentOrder: research-relevant candidates
-        // prefer CuriousSmelter, bulk candidates prefer PracticalSmelter. The fallback case is
-        // further split by whether the perk exists ANYWHERE in the party (code review Slice 6
-        // finding D): "at capacity" implied a busy perked smith the player could wait out or free
-        // up, which is false - and misleading - when no smith in the roster has the perk at all.
-        private static string DescribeSmeltRoutingReason(SmithSnapshot smith, SmeltCandidate candidate,
-            bool anyCuriousSmelterInParty, bool anyPracticalSmelterInParty)
-        {
-            if (smith == null || candidate == null)
-            {
-                return "?";
-            }
-
-            if (candidate.TemplateHasUnopenedParts)
-            {
-                if (smith.HasCuriousSmelter)
-                {
-                    return "CuriousSmelter preferred";
-                }
-
-                return anyCuriousSmelterInParty
-                    ? "fallback - CuriousSmelter at capacity"
-                    : "fallback - no CuriousSmelter in party";
-            }
-
-            if (smith.HasPracticalSmelter)
-            {
-                return "PracticalSmelter preferred";
-            }
-
-            return anyPracticalSmelterInParty
-                ? "fallback - PracticalSmelter at capacity"
-                : "fallback - no PracticalSmelter in party";
-        }
-
-        private static SmithSnapshot FindSmith(IReadOnlyList<SmithSnapshot> smiths, string heroId)
-        {
-            foreach (SmithSnapshot smith in smiths)
-            {
-                if (smith.HeroId == heroId)
-                {
-                    return smith;
-                }
-            }
-
-            return null;
-        }
-
-        private static SmeltCandidate FindCandidate(IReadOnlyList<SmeltCandidate> candidates, string itemId)
-        {
-            foreach (SmeltCandidate candidate in candidates)
-            {
-                if (candidate.ItemId == itemId)
-                {
-                    return candidate;
-                }
-            }
-
-            return null;
-        }
-
-        // Shared by both the smelt- and refine-phase smith-pool log lines so a tester can see all
-        // three perk flags together next to stamina/capacity, without cross-referencing.
-        private static string DescribePerks(SmithSnapshot smith)
-        {
-            return "curiousSmelter=" + smith.HasCuriousSmelter + ", practicalSmelter=" + smith.HasPracticalSmelter
-                + ", practicalRefiner=" + smith.HasPracticalRefiner;
-        }
-
-        private static void LogSmeltedTotals(Dictionary<string, int> smeltedCountByHero, IReadOnlyList<SmithSnapshot> smiths)
-        {
-            if (!SmithingLog.IsVerbose)
-            {
-                return;
-            }
-
-            SmithingLog.Line("Smelted totals:");
-            foreach (KeyValuePair<string, int> entry in smeltedCountByHero)
-            {
-                SmithingLog.Line("  " + HeroDisplayName(smiths, entry.Key) + ": " + entry.Value);
-            }
-        }
-
-        private static void LogRefineSmithPool(IReadOnlyList<SmithSnapshot> smiths)
-        {
-            if (!SmithingLog.IsVerbose)
-            {
-                return;
-            }
-
-            SmithingLog.Line("Smith pool (" + smiths.Count + "):");
-            foreach (SmithSnapshot smith in smiths)
-            {
-                SmithingLog.Line("  " + smith.Name + ": stamina=" + smith.Stamina
-                    + ", refineEnergyCost=" + smith.RefineEnergyCost
-                    + ", refineCapacity=" + smith.RefineCapacity
-                    + ", formulas=" + smith.RefineFormulas.Count
-                    + ", " + DescribePerks(smith));
-                LogSmithFormulas(smith);
-            }
-        }
-
-        // Listing each smith's available formulas (indexed, described) is what proves perk
-        // gating in the log: a smith without the SteelMaker perk simply will not have an
-        // Iron3->Iron4 entry in this list.
-        private static void LogSmithFormulas(SmithSnapshot smith)
-        {
-            if (!SmithingLog.IsVerbose)
-            {
-                return;
-            }
-
-            for (int i = 0; i < smith.RefineFormulas.Count; i++)
-            {
-                SmithingLog.Line("    [" + i + "] " + SmithingLog.Describe(smith.RefineFormulas[i]));
-            }
-        }
-
-        private static void LogRefinePlan(RefinePlan plan, IReadOnlyList<SmithSnapshot> smiths)
-        {
-            if (!SmithingLog.IsVerbose)
-            {
-                return;
-            }
-
-            SmithingLog.Line("Refine plan: " + plan.Actions.Count + " action(s).");
-            foreach (RefineAction action in plan.Actions)
-            {
-                SmithingLog.Line("  " + HeroDisplayName(smiths, action.HeroId) + " -> ["
-                    + action.FormulaIndex + "] " + DescribeFormula(smiths, action.HeroId, action.FormulaIndex));
-            }
-        }
-
-        private static void LogMaterialStock(string label, MaterialStock stock)
-        {
-            if (!SmithingLog.IsVerbose)
-            {
-                return;
-            }
-
-            var parts = new List<string>(MaterialOrdinalCount);
-            for (int ordinal = 0; ordinal < MaterialOrdinalCount; ordinal++)
-            {
-                parts.Add(SmithingLog.MaterialName(ordinal) + "=" + stock.Get(ordinal));
-            }
-
-            SmithingLog.Line(label + ": " + string.Join(", ", parts));
-        }
-
-        private static void LogRunSummary(IReadOnlyList<SmithSnapshot> smithsBefore,
-            IReadOnlyList<SmithSnapshot> smithsAfter, Dictionary<string, int> smeltedCountByHero,
-            Dictionary<string, int> refinedCountByHero)
-        {
-            if (!SmithingLog.IsVerbose)
-            {
-                return;
-            }
-
-            SmithingLog.Section("RUN SUMMARY");
-
-            Dictionary<string, int> staminaBeforeByHero = BuildStaminaBeforeByHero(smithsBefore);
-            foreach (SmithSnapshot smith in smithsAfter)
-            {
-                int smeltedCount;
-                smeltedCountByHero.TryGetValue(smith.HeroId, out smeltedCount);
-                int refinedCount;
-                refinedCountByHero.TryGetValue(smith.HeroId, out refinedCount);
-                if (smeltedCount == 0 && refinedCount == 0)
-                {
-                    continue;
-                }
-
-                int staminaBefore;
-                staminaBeforeByHero.TryGetValue(smith.HeroId, out staminaBefore);
-                int staminaSpent = staminaBefore - smith.Stamina;
-
-                SmithingLog.Line("  " + smith.Name + ": smelted=" + smeltedCount + ", refined=" + refinedCount
-                    + ", staminaSpent=" + staminaSpent);
-            }
-        }
-
-        private static string HeroDisplayName(IReadOnlyList<SmithSnapshot> smiths, string heroId)
-        {
-            foreach (SmithSnapshot smith in smiths)
-            {
-                if (smith.HeroId == heroId)
-                {
-                    return smith.Name;
-                }
-            }
-
-            return heroId;
-        }
-
-        private static string ItemDisplayName(IReadOnlyList<SmeltCandidate> candidates, string itemId)
-        {
-            foreach (SmeltCandidate candidate in candidates)
-            {
-                if (candidate.ItemId == itemId)
-                {
-                    return candidate.Name;
-                }
-            }
-
-            return itemId;
-        }
-
-        private static string DescribeFormula(IReadOnlyList<SmithSnapshot> smiths, string heroId, int formulaIndex)
-        {
-            foreach (SmithSnapshot smith in smiths)
-            {
-                if (smith.HeroId != heroId)
-                {
-                    continue;
-                }
-
-                if (formulaIndex >= 0 && formulaIndex < smith.RefineFormulas.Count)
-                {
-                    return SmithingLog.Describe(smith.RefineFormulas[formulaIndex]);
-                }
-            }
-
-            return "?";
-        }
-
-        private static int SumValues(Dictionary<string, int> counts)
-        {
-            int total = 0;
-            foreach (int value in counts.Values)
-            {
-                total += value;
-            }
-
-            return total;
-        }
-
-        private static Dictionary<string, int> BuildStaminaBeforeByHero(IReadOnlyList<SmithSnapshot> smithsBefore)
-        {
-            var staminaBeforeByHero = new Dictionary<string, int>();
-            foreach (SmithSnapshot smith in smithsBefore)
-            {
-                staminaBeforeByHero[smith.HeroId] = smith.Stamina;
-            }
-
-            return staminaBeforeByHero;
-        }
-
         // Stamina spent is derived from a before/after snapshot pair spanning BOTH phases, not
-        // from the planned smelt/refine cost, because the engine (not the plan) is the source of
-        // truth for what stamina was actually deducted.
-        private static string BuildSummary(IReadOnlyList<SmithSnapshot> smithsBefore,
-            IReadOnlyList<SmithSnapshot> smithsAfter, Dictionary<string, int> smeltedCountByHero,
-            Dictionary<string, int> refinedCountByHero)
+        // from the planned smelt/refine cost - see RunReport.From, which computed staminaSpent
+        // for each entry the same way.
+        private static string BuildSummary(RunReport report)
         {
-            Dictionary<string, int> staminaBeforeByHero = BuildStaminaBeforeByHero(smithsBefore);
-
             var lines = new List<string>();
-            foreach (SmithSnapshot smith in smithsAfter)
+            foreach (RunReportEntry entry in report.Entries)
             {
-                int smeltedCount;
-                smeltedCountByHero.TryGetValue(smith.HeroId, out smeltedCount);
-                int refinedCount;
-                refinedCountByHero.TryGetValue(smith.HeroId, out refinedCount);
-                if (smeltedCount == 0 && refinedCount == 0)
-                {
-                    continue;
-                }
-
-                int staminaBefore;
-                staminaBeforeByHero.TryGetValue(smith.HeroId, out staminaBefore);
-                int staminaSpent = staminaBefore - smith.Stamina;
-
                 lines.Add(new TextObject(
                         "{=SSSmithSummaryLine}{HERO}: {SMELTED} smelted, {REFINED} refined, {STAMINA} stamina spent",
                         null)
-                    .SetTextVariable("HERO", smith.Name)
-                    .SetTextVariable("SMELTED", smeltedCount)
-                    .SetTextVariable("REFINED", refinedCount)
-                    .SetTextVariable("STAMINA", staminaSpent)
+                    .SetTextVariable("HERO", entry.HeroName)
+                    .SetTextVariable("SMELTED", entry.Smelted)
+                    .SetTextVariable("REFINED", entry.Refined)
+                    .SetTextVariable("STAMINA", entry.StaminaSpent)
                     .ToString());
             }
 
