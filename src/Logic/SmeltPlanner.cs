@@ -30,20 +30,36 @@ namespace SmithingSuite.Logic
 
             var actions = new List<SmeltAction>();
 
+            // Computed once per plan, not per candidate/action: whether ANY smith in the party
+            // holds the relevant perk at all. This is what lets the reason below distinguish "no
+            // CuriousSmelter/PracticalSmelter anywhere in the roster" from "one exists but is
+            // currently out of capacity" - a previous review found this distinction stated wrongly
+            // when it was reconstructed outside the planner (Refactor B); computing it here means
+            // the reason recorded on each SmeltAction IS the branch taken, by construction.
+            var anyCuriousSmelterInParty = smithList.Any(smith => smith.HasCuriousSmelter);
+            var anyPracticalSmelterInParty = smithList.Any(smith => smith.HasPracticalSmelter);
+
             foreach (var candidate in orderedCandidates)
             {
                 var remaining = candidate.Count;
+                var researchRelevant = candidate.TemplateHasUnopenedParts;
+                var anyPerkedSmithInParty = researchRelevant ? anyCuriousSmelterInParty : anyPracticalSmelterInParty;
 
                 // Research-relevant work prefers a CuriousSmelter (multiplies research gain);
                 // bulk work prefers a PracticalSmelter (cheaper smelts -> more actions from the
                 // same stamina). Neither preference may starve a smith or drop a candidate: once
                 // the preferred smiths are out of capacity, assignment falls through to any
                 // smith that still has some, in roster order.
-                foreach (var smithIndex in AssignmentOrder(smithList, candidate.TemplateHasUnopenedParts))
+                foreach (var smithIndex in AssignmentOrder(smithList, researchRelevant))
                 {
+                    var isPreferredSmith = researchRelevant
+                        ? smithList[smithIndex].HasCuriousSmelter
+                        : smithList[smithIndex].HasPracticalSmelter;
+                    var reason = DetermineReason(researchRelevant, isPreferredSmith, anyPerkedSmithInParty);
+
                     while (remaining > 0 && freeCapacity[smithIndex] > 0)
                     {
-                        actions.Add(new SmeltAction(smithList[smithIndex].HeroId, candidate.ItemId));
+                        actions.Add(new SmeltAction(smithList[smithIndex].HeroId, candidate.ItemId, reason));
                         freeCapacity[smithIndex]--;
                         remaining--;
                     }
@@ -56,6 +72,16 @@ namespace SmithingSuite.Logic
             }
 
             return new SmeltPlan(actions);
+        }
+
+        private static SmeltRoutingReason DetermineReason(bool researchRelevant, bool isPreferredSmith, bool anyPerkedSmithInParty)
+        {
+            if (isPreferredSmith)
+            {
+                return researchRelevant ? SmeltRoutingReason.CuriousSmelterPreferred : SmeltRoutingReason.PracticalSmelterPreferred;
+            }
+
+            return anyPerkedSmithInParty ? SmeltRoutingReason.FallbackPerkedSmithAtCapacity : SmeltRoutingReason.FallbackNoPerkedSmith;
         }
 
         /// <summary>

@@ -11,10 +11,18 @@ namespace SmithingSuite.Logic
         public string HeroId { get; }
         public string ItemId { get; }
 
-        public SmeltAction(string heroId, string itemId)
+        /// <summary>
+        /// Why <see cref="SmeltPlanner"/> routed this action to this smith (Refactor B) - set at
+        /// the moment of assignment, so it is always exactly the branch the planner took, never a
+        /// reconstruction from outside.
+        /// </summary>
+        public SmeltRoutingReason Reason { get; }
+
+        public SmeltAction(string heroId, string itemId, SmeltRoutingReason reason)
         {
             HeroId = heroId;
             ItemId = itemId;
+            Reason = reason;
         }
     }
 
