@@ -1,10 +1,10 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Bannerlord.UIExtenderEx.Attributes;
 using Bannerlord.UIExtenderEx.ViewModels;
 using SmithingSuite.Advisor;
 using SmithingSuite.Integration;
+using static SmithingSuite.Advisor.AdvisorPresentation;
 using TaleWorlds.CampaignSystem.ViewModelCollection.WeaponCrafting.WeaponDesign;
 using TaleWorlds.Core;
 using TaleWorlds.Library;
@@ -35,16 +35,6 @@ namespace SmithingSuite.UI
     [ViewModelMixin("RefreshItem")]
     public sealed class WeaponDesignAdvisorMixin : BaseViewModelMixin<WeaponDesignVM>
     {
-        // The engine exposes WeaponDesignElement.ScalePercentage as an arbitrary int with no built-in
-        // min/max (TaleWorlds.Core.WeaponDesignElement) - vanilla's own crafting UI never exposes a
-        // scale slider at all, so there is no existing convention to mirror here. This range is a
-        // labelled OPINION, exactly like ScoreWeights (SPEC-SLICE4-5.md "Honest limitation"): wide
-        // enough that a scaled winner can actually show up (AC6), narrow enough that the suggested
-        // pieces still look like the weapon the player chose.
-        private static readonly int[] ScaleSteps = { 80, 90, 100, 110, 120 };
-
-        private const int DefaultCatalogueScale = 100;
-
         // Logged once per run (not once per call) - RefreshItem can fire every frame, so a broken
         // mixin must not spam the log the same way EngineDesignEvaluator's own failures do not.
         // Deliberately an INSTANCE field, not static (code review FINDING 2, mirroring
@@ -124,6 +114,9 @@ namespace SmithingSuite.UI
             // registration call happened, not that the game ever built an instance for a real
             // crafting screen.
             SmithingLog.Line("WeaponDesignAdvisorMixin: advisor mixin attached to WeaponDesignVM");
+            // The crafting screen is opened independently of any town-menu run - the batching
+            // optimisation does not apply here, so flush immediately (see SmithingLog.Flush()).
+            SmithingLog.Flush();
         }
 
         [DataSourceProperty]
@@ -409,6 +402,9 @@ namespace SmithingSuite.UI
                     {
                         _hasLoggedNotYetReady = true;
                         SmithingLog.Line("WeaponDesignAdvisorMixin: crafted item not yet available, advisor panel waiting for a design");
+                        // The crafting screen has no town-menu run around it - the batching
+                        // optimisation does not apply here (see SmithingLog.Flush()).
+                        SmithingLog.Flush();
                     }
                     return;
                 }
@@ -435,6 +431,9 @@ namespace SmithingSuite.UI
                     _hasLoggedFirstSuccess = true;
                     SmithingLog.Line("WeaponDesignAdvisorMixin: advisor panel shown, scored "
                         + score.Axes.Count + " axes");
+                    // The crafting screen has no town-menu run around it - the batching
+                    // optimisation does not apply here (see SmithingLog.Flush()).
+                    SmithingLog.Flush();
                 }
             }
             catch (Exception ex)
@@ -517,6 +516,9 @@ namespace SmithingSuite.UI
                     SmithingLog.Line("WeaponDesignAdvisorMixin: could not resolve WeaponDesignVM's "
                         + "private field '_crafting' via GetPrivate<Crafting> - advisor panel disabled "
                         + "until this is fixed for the current game version");
+                    // The crafting screen has no town-menu run around it - the batching
+                    // optimisation does not apply here (see SmithingLog.Flush()).
+                    SmithingLog.Flush();
                 }
                 return null;
             }
@@ -537,13 +539,6 @@ namespace SmithingSuite.UI
             {
                 AdvisorAxes.Add(new AdvisorAxisItemVM(axis.Name, axis.Value, axis.Reason));
             }
-        }
-
-        private static string BuildVerdict(WeaponScore score, MountedContext context)
-        {
-            string contextLabel = context == MountedContext.Mounted ? "mounted" : "on foot";
-            return "Combat score (" + contextLabel + "): " + score.CombatTotal.ToString("F0")
-                + " - sale value " + score.SaleValue + " gold. Axes below explain why.";
         }
 
         /// <summary>
@@ -664,12 +659,12 @@ namespace SmithingSuite.UI
                             continue;
                         }
 
-                        pieces.Add(new DesignPiece(piece.StringId, pieceVm.PieceType, pieceVm.Tier, DefaultCatalogueScale));
+                        pieces.Add(new DesignPiece(piece.StringId, pieceVm.PieceType, pieceVm.Tier, AdvisorSearchPolicy.DefaultScalePercentage));
                     }
                 }
             }
 
-            return new PieceCatalogue(vm.CurrentCraftedWeaponTemplateId, pieces, ScaleSteps);
+            return new PieceCatalogue(vm.CurrentCraftedWeaponTemplateId, pieces, AdvisorSearchPolicy.ScaleSteps);
         }
 
         /// <summary>
@@ -707,47 +702,6 @@ namespace SmithingSuite.UI
             pieces.Add(new DesignPiece(piece.StringId, pieceVm.PieceType, pieceVm.Tier, element.ScalePercentage));
         }
 
-        private static string DescribeSuggestion(OptimizationResult result)
-        {
-            // HasLegalResult is the ONLY thing that makes result.Best trustworthy (FINDING 1) - an
-            // unverified seed must never be shown as "Suggested", so this checks it before Score at
-            // all, rather than trusting a non-null Score to imply legality.
-            if (result == null || !result.HasLegalResult || result.Score == null)
-            {
-                return "No craftable improvement was found within the current smithing skill and unlocked parts.";
-            }
-
-            string pieceList = string.Join(", ", result.Best.Pieces
-                .OrderBy(p => p.PieceType)
-                .Select(p => PieceTypeName(p.PieceType) + " " + p.PieceId + " @" + p.ScalePercentage + "%"));
-
-            string budgetNote = result.BudgetExhausted
-                ? " (search budget exhausted - best found so far)"
-                : string.Empty;
-
-            return "Suggested: " + pieceList + " -> combat score " + result.Score.CombatTotal.ToString("F0")
-                + ", sale value " + result.Score.SaleValue + " gold" + budgetNote + ".";
-        }
-
-        private static string PieceTypeName(int pieceType)
-        {
-            // Mirrors TaleWorlds.Core.CraftingPiece.PieceTypes (Blade=0, Guard=1, Handle=2, Pommel=3),
-            // the same ordinals DesignOptimizer and EngineDesignEvaluator already assume.
-            switch (pieceType)
-            {
-                case 0: return "Blade";
-                case 1: return "Guard";
-                case 2: return "Handle";
-                case 3: return "Pommel";
-                default: return "Piece";
-            }
-        }
-
-        private static string ContextButtonLabel(bool mounted)
-        {
-            return mounted ? "Context: Mounted" : "Context: On Foot";
-        }
-
         private void LogFailureOnce(Exception ex)
         {
             if (_hasLoggedFailure)
@@ -757,6 +711,9 @@ namespace SmithingSuite.UI
 
             _hasLoggedFailure = true;
             SmithingLog.Line("WeaponDesignAdvisorMixin: disabling advisor panel after exception - " + ex.Message);
+            // The crafting screen has no town-menu run around it - the batching optimisation does
+            // not apply here, so flush immediately (see SmithingLog.Flush()).
+            SmithingLog.Flush();
         }
     }
 

@@ -98,6 +98,8 @@
     <Compile Include="Logic\SmeltPlanner.cs" />
     <Compile Include="Logic\RefinePlan.cs" />
     <Compile Include="Logic\RefinePlanner.cs" />
+    <Compile Include="Advisor\AdvisorPresentation.cs" />
+    <Compile Include="Advisor\AdvisorSearchPolicy.cs" />
     <Compile Include="Advisor\ArmourModel.cs" />
     <Compile Include="Advisor\DamageKind.cs" />
     <Compile Include="Advisor\DesignCandidate.cs" />

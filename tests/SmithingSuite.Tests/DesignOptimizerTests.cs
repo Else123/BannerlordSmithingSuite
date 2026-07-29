@@ -254,6 +254,59 @@ namespace SmithingSuite.Tests
         }
 
         [Fact]
+        public void Optimize_WithTheShippedAdvisorSearchPolicyScaleSteps_ActuallyVariesScale() // AC6, against shipped values
+        {
+            // AdvisorSearchPolicy.ScaleSteps (src/Advisor/AdvisorSearchPolicy.cs) is the ONLY scale
+            // set WeaponDesignAdvisorMixin.BuildCatalogue ever hands to the optimizer at runtime -
+            // Optimize_ActuallyVariesScalePercentageWhenItImprovesTheScore above (and every other AC6
+            // test) supplies its own synthetic scale set instead, so it would stay green even if the
+            // shipped steps were ever narrowed to a single value and scale search silently stopped
+            // doing anything in the real game. This test closes that gap by running the actual
+            // production values.
+            var seed = Candidate(
+                "polearm",
+                Piece("blade-a", BladeType, tier: 1, scale: AdvisorSearchPolicy.DefaultScalePercentage),
+                Piece("guard-a", GuardType, tier: 1, scale: AdvisorSearchPolicy.DefaultScalePercentage),
+                Piece("handle-a", HandleType, tier: 1, scale: AdvisorSearchPolicy.DefaultScalePercentage),
+                Piece("pommel-a", PommelType, tier: 1, scale: AdvisorSearchPolicy.DefaultScalePercentage));
+
+            var catalogue = new PieceCatalogue(
+                "polearm",
+                new[]
+                {
+                    Piece("blade-a", BladeType, tier: 1),
+                    Piece("guard-a", GuardType, tier: 1),
+                    Piece("handle-a", HandleType, tier: 1),
+                    Piece("pommel-a", PommelType, tier: 1),
+                },
+                AdvisorSearchPolicy.ScaleSteps);
+
+            DesignEvaluation Evaluate(DesignCandidate candidate)
+            {
+                // Score increases monotonically with the blade's scale, so a genuine search over the
+                // shipped steps - not decoration - is required to find the improvement over the
+                // seed's default scale.
+                var blade = candidate.Pieces.First(p => p.PieceType == BladeType);
+                var damage = 20f + (blade.ScalePercentage - AdvisorSearchPolicy.DefaultScalePercentage) * 0.5f;
+                return new DesignEvaluation(Stats(damage), difficulty: 10);
+            }
+
+            var evaluator = new FakeDesignEvaluator(Evaluate);
+            var optimizer = new DesignOptimizer(evaluator);
+            var options = new OptimizerOptions(
+                evaluationBudget: 200,
+                context: MountedContext.OnFoot,
+                weights: ScoreWeights.ForContext(MountedContext.OnFoot),
+                maxDifficulty: 100);
+
+            var result = optimizer.Optimize(seed, catalogue, options);
+
+            var bladeUsed = result.Best.Pieces.First(p => p.PieceType == BladeType);
+            Assert.True(bladeUsed.ScalePercentage > AdvisorSearchPolicy.DefaultScalePercentage,
+                $"Winning scale {bladeUsed.ScalePercentage} should exceed the default {AdvisorSearchPolicy.DefaultScalePercentage}% using the shipped AdvisorSearchPolicy.ScaleSteps.");
+        }
+
+        [Fact]
         public void Optimize_NeverExceedsTheEvaluationBudgetAndFlagsExhaustion() // AC7
         {
             var seed = Candidate(

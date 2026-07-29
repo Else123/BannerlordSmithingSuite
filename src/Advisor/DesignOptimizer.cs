@@ -110,8 +110,6 @@ namespace SmithingSuite.Advisor
         private const int PieceTypeHandle = 2;
         private const int PieceTypePommel = 3;
 
-        private const int DefaultScalePercentage = 100;
-
         // The SEARCH order (blade dominant, then handle, then guard/pommel - SPEC-SLICE4-5.md
         // "Ansatz + Architektur / Slice 4") is a policy choice independent of the PieceTypes
         // ordinals above; do not "simplify" this to numeric order.
@@ -182,7 +180,7 @@ namespace SmithingSuite.Advisor
             }
 
             var existingPiece = CurrentPiece(current, slotType);
-            var currentScale = existingPiece != null ? existingPiece.ScalePercentage : DefaultScalePercentage;
+            var currentScale = existingPiece != null ? existingPiece.ScalePercentage : AdvisorSearchPolicy.DefaultScalePercentage;
 
             // A slot whose current piece is not itself part of the legal catalogue (e.g. a seed
             // carrying a piece the player has not actually unlocked) must be swapped out regardless
