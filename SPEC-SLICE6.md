@@ -108,17 +108,24 @@ change, touching AI lords' stamina, and any `SmithingModel` override.
 ## Akzeptanzkriterien
 
 Unit-testable:
-- [ ] AC1 `WithStaminaBudget` returns a copy with the reduced stamina and every other field intact.
-- [ ] AC2 A 50 % share halves a smith's smelt capacity (floor), leaving the remainder for refining.
-- [ ] AC3 A 0 % share yields zero smelt actions and does not throw.
-- [ ] AC4 A 100 % share reproduces today's behaviour exactly (regression guard).
-- [ ] AC5 The share is clamped to 0-100; out-of-range config cannot produce negative stamina.
+- [x] AC1 `WithStaminaBudget` returns a copy with the reduced stamina and every other field intact.
+- [x] AC2 A 50 % share halves a smith's smelt capacity (floor), leaving the remainder for refining.
+- [x] AC3 A 0 % share yields zero smelt actions and does not throw.
+- [x] AC4 A 100 % share reproduces today's behaviour exactly (regression guard).
+- [x] AC5 The share is clamped to 0-100; out-of-range config cannot produce negative stamina.
+      (The config-level clamp moved into `SmithSnapshot.ForSmeltShare` after a review found it
+      stranded in the untestable Integration layer.)
 
 In-game (manual, with the log):
-- [ ] AC6 The run header shows the campaign date/time, and two runs apart in campaign time are
-      distinguishable from two runs seconds apart.
-- [ ] AC7 After a run, refining has actually happened: `Charcoal` and `IronOre` move, rather than
-      sitting at 0 / 949.
+- [x] AC6 The run header shows the campaign date/time, and two runs apart in campaign time are
+      distinguishable from two runs seconds apart. **Verified 2026-07-28**: two runs one second
+      apart both read `Spring 5, 1146, hour 15`, and the second correctly planned nothing.
+- [x] AC7 After a run, refining has actually happened. **Verified 2026-07-28**: refine capacity rose
+      from 0-in-60-of-70 smith-phases to 10-45, refine plans from ~2 actions to 103-104, and the
+      material flows match the formulas (Iron5 777 -> 669 while Iron6 413 -> 479, exactly 2:1).
+      Note: `IronOre` still sits at 949 - that is now **correct**, not starvation. Charcoal is the
+      binding constraint, and spending it on Iron5 -> Iron6 is worth more than on ore -> Iron1 when
+      ~38,000 Iron1 is already banked. The highest-tier preference picks the economically right one.
 - [ ] AC8 Crafting stamina increases while the party travels outside a settlement, and does **not**
       increase at double rate while inside one.
 - [ ] AC9 Disabling `TravelStaminaEnabled` restores exact vanilla recovery behaviour.
@@ -172,10 +179,12 @@ In-game: AC6-AC10 on the test save, reading `smithingsuite.log`.
 - Gate2: 2026-07-26 - 50/50 split and travel recovery approved by the user
 - Surface: claude
 - Mode: normal
-- Welle 1: [ ] #1 [ ] #4
-- Welle 2: [ ] #2
-- Welle 3: [ ] #3 [ ] #5
-- Welle 4: [ ] #6
+- Welle 1: [x] #1 [x] #4
+- Welle 2: [x] #2
+- Welle 3: [x] #3 [x] #5
+- Welle 4: [x] #6
+- **Slice 6 complete.** Build green, deployed; AC1-AC5 unit-tested, AC6-AC7 verified in-game
+  2026-07-28. AC8-AC10 still need a manual pass (travel recovery and the MCM page).
 - AC: see Akzeptanzkriterien
 - Notes:
   - **C is the mod's first deliberate balance change.** Every earlier slice deliberately avoided
