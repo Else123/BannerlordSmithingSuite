@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using Bannerlord.UIExtenderEx.Attributes;
 using Bannerlord.UIExtenderEx.ViewModels;
 using SmithingSuite.Advisor;
@@ -286,6 +287,20 @@ namespace SmithingSuite.UI
         /// universe from what <see cref="WeaponDesignVM.PieceLists"/> already exposes rather than
         /// re-querying <c>ICraftingCampaignBehavior.IsOpened</c> itself, and guards against re-entry
         /// so a double-click cannot start a second search while one is already running.
+        ///
+        /// Runs synchronously on this button-click handler - deliberately NOT on a background
+        /// thread. <c>Crafting.GenerateItem</c> (what <see cref="DesignOptimizer"/> calls through
+        /// <see cref="IDesignEvaluator"/>) builds real <c>ItemObject</c>s and touches
+        /// <c>MBObjectManager</c>; Bannerlord's engine types are not documented as thread-safe, and
+        /// a concurrency fault there would be far worse than the stutter this is meant to prevent.
+        /// The bound against a freeze is instead <see cref="Stopwatch"/>-based wall-clock time
+        /// (<see cref="SmithingSuiteConfig.AdvisorTimeBudgetMs"/>), bridged into
+        /// <see cref="OptimizerOptions.ShouldAbort"/> - <see cref="DesignOptimizer"/> itself stays
+        /// engine-free and deterministic (AC8) and owns no clock of its own; this is the only place
+        /// in the mixin permitted to own one, because it is the UI-thread caller that actually needs
+        /// the wall-clock guarantee. <c>AdvisorEvaluationBudget</c> alone cannot provide that
+        /// guarantee: each evaluation's real cost is unknown and machine-dependent, so a count-only
+        /// budget can still block the render thread for a perceptible time on a slow machine.
         /// </summary>
         public void ExecuteSuggestBest()
         {
@@ -322,9 +337,23 @@ namespace SmithingSuite.UI
                 DesignCandidate seed = BuildSeed(vm);
                 MountedContext context = AdvisorIsMounted ? MountedContext.Mounted : MountedContext.OnFoot;
                 ScoreWeights weights = ScoreWeights.ForContext(context);
-                var options = new OptimizerOptions(SmithingSuiteConfig.AdvisorEvaluationBudget, context, weights, vm.MaxDifficulty);
+
+                // The wall-clock guard (see this method's class doc): owned here, not by
+                // DesignOptimizer, so the optimizer stays a deterministic, engine-free, unit-tested
+                // pure search and this UI-thread caller alone carries the timing dependency. Clamped
+                // to >= 0 at this read site, mirroring SmithingSuiteConfig.SmeltStaminaSharePercent's
+                // own clamp-at-the-read-site pattern - a corrupted or future bad config/save value
+                // must not go negative, which would make ElapsedMilliseconds > timeBudgetMs trivially
+                // true forever and silently disable the search on every call.
+                var searchClock = Stopwatch.StartNew();
+                int timeBudgetMs = Math.Max(0, SmithingSuiteConfig.AdvisorTimeBudgetMs);
+                int evaluationBudget = SmithingSuiteConfig.AdvisorEvaluationBudget;
+                var options = new OptimizerOptions(evaluationBudget, context, weights, vm.MaxDifficulty,
+                    shouldAbort: () => searchClock.ElapsedMilliseconds > timeBudgetMs);
                 var optimizer = new DesignOptimizer(new EngineDesignEvaluator());
                 OptimizationResult result = optimizer.Optimize(seed, catalogue, options);
+
+                LogIfAbortedOnTime(result, searchClock.ElapsedMilliseconds, timeBudgetMs, evaluationBudget);
 
                 AdvisorSuggestionText = DescribeSuggestion(result);
                 AdvisorHasSuggestion = true;
@@ -338,6 +367,33 @@ namespace SmithingSuite.UI
             {
                 AdvisorIsBusy = false;
             }
+        }
+
+        /// <summary>
+        /// One-line diagnostic for the case a player is most likely to report as "the suggestion
+        /// looks poor": the search aborted on the wall-clock guard rather than exhausting the count
+        /// budget or converging. Distinguishes "aborted on time" from "aborted on count" by
+        /// comparing <see cref="OptimizationResult.EvaluationsUsed"/> against the configured count
+        /// budget rather than adding a second bool to <see cref="OptimizationResult"/> for it: if
+        /// the search stopped early (<see cref="OptimizationResult.BudgetExhausted"/>) but used
+        /// fewer evaluations than the count budget allowed, the count budget cannot be what stopped
+        /// it - only <see cref="OptimizerOptions.ShouldAbort"/> could have. Logged via
+        /// <see cref="SmithingLog"/> exactly like every other call site in this class - <c>Line</c>
+        /// already no-ops when <see cref="SmithingSuiteConfig.VerboseLogging"/> is off, and
+        /// <c>Flush</c> is called unconditionally because this call site has no town-menu run around
+        /// it to batch into (see <see cref="SmithingLog.Flush"/>).
+        /// </summary>
+        private static void LogIfAbortedOnTime(OptimizationResult result, long elapsedMs, int timeBudgetMs, int evaluationBudget)
+        {
+            if (!result.BudgetExhausted || result.EvaluationsUsed >= evaluationBudget)
+            {
+                return;
+            }
+
+            SmithingLog.Line("WeaponDesignAdvisorMixin: suggest-best search aborted on time budget ("
+                + timeBudgetMs + "ms) after " + elapsedMs + "ms elapsed, " + result.EvaluationsUsed
+                + " evaluations used - returning best design found so far");
+            SmithingLog.Flush();
         }
 
         /// <summary>

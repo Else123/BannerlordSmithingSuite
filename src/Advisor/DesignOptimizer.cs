@@ -41,12 +41,32 @@ namespace SmithingSuite.Advisor
         /// <summary>From <c>SmithingModel.CalculateWeaponDesignDifficulty</c> vs the smith's skill (AC4).</summary>
         public int MaxDifficulty { get; }
 
-        public OptimizerOptions(int evaluationBudget, MountedContext context, ScoreWeights weights, int maxDifficulty)
+        /// <summary>
+        /// Optional external abort signal, consulted at exactly the same point in the search loop
+        /// as <see cref="EvaluationBudget"/> (see <c>SearchState.TryEvaluate</c>) and treated
+        /// identically: once it returns true the search stops immediately and reports the best
+        /// legal candidate found so far via <see cref="OptimizationResult.BudgetExhausted"/>.
+        /// Defaults to null, meaning "no time limit".
+        ///
+        /// Deliberately a caller-supplied predicate rather than a <see cref="System.Diagnostics.Stopwatch"/>
+        /// owned by this class: <see cref="DesignOptimizer"/> stays engine-free and, more
+        /// importantly, deterministic and unit-testable without a wall-clock dependency - with a
+        /// null predicate (every test but the ones exercising this hook directly), behaviour is
+        /// byte-identical to a build that never had it (AC8). The real wall-clock wiring lives in
+        /// <c>WeaponDesignAdvisorMixin.ExecuteSuggestBest</c>, the one place allowed to own a
+        /// Stopwatch, because that is UI-thread code where a hard wall-clock cap - not an
+        /// evaluation count, which cannot bound wall time when the per-evaluation engine call cost
+        /// is unknown and machine-dependent - is what actually prevents a perceptible freeze.
+        /// </summary>
+        public Func<bool> ShouldAbort { get; }
+
+        public OptimizerOptions(int evaluationBudget, MountedContext context, ScoreWeights weights, int maxDifficulty, Func<bool> shouldAbort = null)
         {
             EvaluationBudget = evaluationBudget;
             Context = context;
             Weights = weights;
             MaxDifficulty = maxDifficulty;
+            ShouldAbort = shouldAbort;
         }
     }
 
@@ -74,7 +94,14 @@ namespace SmithingSuite.Advisor
         /// <summary>Every <see cref="IDesignEvaluator.Evaluate"/> call made, cache hits excluded (AC7).</summary>
         public int EvaluationsUsed { get; }
 
-        /// <summary>True if the search stopped because the budget ran out, not because it converged.</summary>
+        /// <summary>
+        /// True if the search stopped early rather than converging on its own - either because
+        /// <see cref="OptimizerOptions.EvaluationBudget"/> ran out, or because the caller's
+        /// optional <see cref="OptimizerOptions.ShouldAbort"/> tripped (typically a wall-clock
+        /// cap). Both cases mean the same thing to a caller: <see cref="Best"/> is the best design
+        /// found within the time/budget available, not necessarily the true optimum, and should be
+        /// labelled as such.
+        /// </summary>
         public bool BudgetExhausted { get; }
 
         public OptimizationResult(DesignCandidate best, bool hasLegalResult, WeaponScore score, int evaluationsUsed, bool budgetExhausted)
@@ -363,8 +390,13 @@ namespace SmithingSuite.Advisor
             /// <summary>
             /// Evaluates a candidate, or returns the cached result for an identical one so the fixed
             /// budget is spent only on genuinely new designs (never twice on the same candidate
-            /// identity). Returns null once the budget is exhausted - callers must stop immediately
-            /// (rule 5), not substitute a fallback value.
+            /// identity). Returns null once the budget is exhausted OR <see cref="OptimizerOptions.ShouldAbort"/>
+            /// trips - callers must stop immediately (rule 5), not substitute a fallback value. This
+            /// is the single place both stop conditions are consulted, so every stage of the staged
+            /// search (blade/handle/guard/pommel, then scale) reacts to an abort exactly as promptly
+            /// as it already reacts to the count budget - the check happens BEFORE the expensive
+            /// evaluator call, never after, so an abort can never let one more real engine call
+            /// through than the count budget already would.
             /// </summary>
             public DesignEvaluation TryEvaluate(DesignCandidate candidate)
             {
@@ -375,7 +407,7 @@ namespace SmithingSuite.Advisor
                     return cached;
                 }
 
-                if (EvaluationsUsed >= _options.EvaluationBudget)
+                if (EvaluationsUsed >= _options.EvaluationBudget || ShouldAbortNow())
                 {
                     BudgetExhausted = true;
                     return null;
@@ -385,6 +417,19 @@ namespace SmithingSuite.Advisor
                 EvaluationsUsed++;
                 _cache[key] = evaluation;
                 return evaluation;
+            }
+
+            /// <summary>
+            /// A null <see cref="OptimizerOptions.ShouldAbort"/> (every existing test, and every
+            /// caller that does not need a wall-clock cap) must never call through a delegate at
+            /// all - not just "always return false" - so this stays a plain short-circuited
+            /// boolean expression rather than defaulting <c>ShouldAbort</c> to a no-op lambda,
+            /// keeping the null case exactly as cheap and exactly as behaviourally inert as before
+            /// this hook existed (AC8).
+            /// </summary>
+            private bool ShouldAbortNow()
+            {
+                return _options.ShouldAbort != null && _options.ShouldAbort();
             }
 
             public float CombatScoreOf(DesignEvaluation evaluation)

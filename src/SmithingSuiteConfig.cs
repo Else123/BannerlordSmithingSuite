@@ -66,5 +66,22 @@ namespace SmithingSuite
         /// exercised by <c>DesignOptimizerTests</c> (100-200 for typical cases).
         /// </summary>
         public static int AdvisorEvaluationBudget { get; set; } = 500;
+
+        /// <summary>
+        /// Hard wall-clock cap, in milliseconds, on one <see cref="Advisor.DesignOptimizer.Optimize"/>
+        /// search - bridged into <see cref="Advisor.OptimizerOptions.ShouldAbort"/> by
+        /// <c>WeaponDesignAdvisorMixin.ExecuteSuggestBest</c>, the only caller allowed to own the
+        /// <see cref="System.Diagnostics.Stopwatch"/> that measures it.
+        ///
+        /// Exists because <see cref="AdvisorEvaluationBudget"/> alone cannot bound wall time: each
+        /// evaluation is a real <c>Crafting.GenerateItem</c> engine call, "orders of magnitude
+        /// slower than comparing scores" (SPEC-SLICE4-5.md), and its per-call cost is unknown and
+        /// machine-dependent - several hundred synchronous engine calls on the render thread is a
+        /// visible freeze no count budget alone can prevent. Default 50ms is roughly three frames
+        /// at 60fps - a hitch, not a freeze. When the search aborts on this clock rather than
+        /// converging or exhausting the count budget, it returns the best design found so far,
+        /// labelled as such via <see cref="Advisor.OptimizationResult.BudgetExhausted"/>.
+        /// </summary>
+        public static int AdvisorTimeBudgetMs { get; set; } = 50;
     }
 }

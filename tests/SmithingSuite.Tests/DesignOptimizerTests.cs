@@ -450,6 +450,161 @@ namespace SmithingSuite.Tests
         }
 
         [Fact]
+        public void Optimize_WithShouldAbortTrueImmediately_ReturnsWithoutThrowingAndFlagsAborted()
+        {
+            // The abort predicate trips before even the seed's own evaluation runs - the search
+            // must still behave per the class's hard rule (never null, never throws) and be honest
+            // that nothing was ever verified.
+            var seed = Candidate(
+                "one-handed-sword",
+                Piece("blade-basic", BladeType, tier: 1),
+                Piece("guard-basic", GuardType, tier: 1),
+                Piece("handle-basic", HandleType, tier: 1),
+                Piece("pommel-basic", PommelType, tier: 1));
+
+            var catalogue = new PieceCatalogue(
+                "one-handed-sword",
+                new[]
+                {
+                    Piece("blade-basic", BladeType, tier: 1),
+                    Piece("blade-decent", BladeType, tier: 2),
+                    Piece("guard-basic", GuardType, tier: 1),
+                    Piece("handle-basic", HandleType, tier: 1),
+                    Piece("pommel-basic", PommelType, tier: 1),
+                },
+                new[] { 100 });
+
+            DesignEvaluation Evaluate(DesignCandidate candidate) => new DesignEvaluation(Stats(50f), difficulty: 10);
+
+            var evaluator = new FakeDesignEvaluator(Evaluate);
+            var optimizer = new DesignOptimizer(evaluator);
+            var options = new OptimizerOptions(
+                evaluationBudget: 200,
+                context: MountedContext.OnFoot,
+                weights: ScoreWeights.ForContext(MountedContext.OnFoot),
+                maxDifficulty: 100,
+                shouldAbort: () => true);
+
+            var result = optimizer.Optimize(seed, catalogue, options);
+
+            Assert.NotNull(result);
+            Assert.NotNull(result.Best); // never null (hard rule), even when aborted on the very first check
+            Assert.True(result.BudgetExhausted, "An immediate abort must be reported the same way budget exhaustion is.");
+            Assert.Equal(0, evaluator.InvocationCount); // the real engine call never ran even once
+            Assert.False(result.HasLegalResult); // nothing was ever verified against the catalogue
+            AssertSameDesign(seed, result.Best); // the unverified seed, per OptimizationResult.Best's contract
+        }
+
+        [Fact]
+        public void Optimize_WithShouldAbortTrippingAfterNEvaluations_BoundsEvaluationsUsedByN()
+        {
+            // Proves the abort predicate is consulted INSIDE the search loop, not only once at
+            // entry: a catalogue whose blade stage alone offers 40 candidates, against an abort
+            // that trips after only 5 real evaluations.
+            var seed = Candidate(
+                "great-axe",
+                Piece("blade-0", BladeType, tier: 1),
+                Piece("guard-a", GuardType, tier: 1),
+                Piece("handle-a", HandleType, tier: 1),
+                Piece("pommel-a", PommelType, tier: 1));
+
+            var blades = Enumerable.Range(0, 40)
+                .Select(i => Piece($"blade-{i}", BladeType, tier: 1 + i % 6))
+                .ToList();
+            var pieces = new List<DesignPiece>(blades)
+            {
+                Piece("guard-a", GuardType, tier: 1),
+                Piece("handle-a", HandleType, tier: 1),
+                Piece("pommel-a", PommelType, tier: 1),
+            };
+            var catalogue = new PieceCatalogue("great-axe", pieces, new[] { 80, 100, 120 });
+
+            DesignEvaluation Evaluate(DesignCandidate candidate)
+            {
+                var tierSum = candidate.Pieces.Sum(p => p.PieceTier);
+                return new DesignEvaluation(Stats(20f + tierSum * 5f), difficulty: 10);
+            }
+
+            var evaluator = new FakeDesignEvaluator(Evaluate);
+            var optimizer = new DesignOptimizer(evaluator);
+            const int abortAfter = 5;
+            var options = new OptimizerOptions(
+                evaluationBudget: 5000, // far larger than abortAfter - the count budget must not be what stops this
+                context: MountedContext.OnFoot,
+                weights: ScoreWeights.ForContext(MountedContext.OnFoot),
+                maxDifficulty: 100,
+                shouldAbort: () => evaluator.InvocationCount >= abortAfter);
+
+            var result = optimizer.Optimize(seed, catalogue, options);
+
+            Assert.NotNull(result);
+            Assert.NotNull(result.Best);
+            // The abort check runs strictly BEFORE the evaluator call (hard constraint 5 in the
+            // spec), so no implementation of this contract can ever let one more real evaluation
+            // through than the threshold - this is an exact bound, not "at most one" slack.
+            Assert.Equal(abortAfter, result.EvaluationsUsed);
+            Assert.True(result.EvaluationsUsed < 43,
+                "A search running to completion over 40 blade candidates plus other slots would use far more " +
+                "than this - the search must have stopped early on the abort signal, not merely converged.");
+            Assert.True(result.BudgetExhausted, "A time-style abort must be reported the same way budget exhaustion is.");
+        }
+
+        [Fact]
+        public void Optimize_WithNullShouldAbort_ReproducesTheSameResultAsHavingNoAbortHookAtAll() // AC8 guard for the new hook
+        {
+            var seed = Candidate(
+                "one-handed-sword",
+                Piece("blade-a", BladeType, tier: 1),
+                Piece("guard-a", GuardType, tier: 1),
+                Piece("handle-a", HandleType, tier: 1),
+                Piece("pommel-a", PommelType, tier: 1));
+
+            var catalogue = new PieceCatalogue(
+                "one-handed-sword",
+                new[]
+                {
+                    Piece("blade-a", BladeType, tier: 1),
+                    Piece("blade-b", BladeType, tier: 3),
+                    Piece("blade-c", BladeType, tier: 2),
+                    Piece("guard-a", GuardType, tier: 1),
+                    Piece("handle-a", HandleType, tier: 1),
+                    Piece("pommel-a", PommelType, tier: 1),
+                },
+                new[] { 90, 100, 110 });
+
+            DesignEvaluation Evaluate(DesignCandidate candidate)
+            {
+                var blade = candidate.Pieces.First(p => p.PieceType == BladeType);
+                var damage = 20f + blade.PieceTier * 7f + (blade.ScalePercentage - 100) * 0.3f;
+                return new DesignEvaluation(Stats(damage), difficulty: 10);
+            }
+
+            var withoutTheHookAtAll = new OptimizerOptions(
+                evaluationBudget: 100,
+                context: MountedContext.OnFoot,
+                weights: ScoreWeights.ForContext(MountedContext.OnFoot),
+                maxDifficulty: 100);
+
+            var withAnExplicitNullHook = new OptimizerOptions(
+                evaluationBudget: 100,
+                context: MountedContext.OnFoot,
+                weights: ScoreWeights.ForContext(MountedContext.OnFoot),
+                maxDifficulty: 100,
+                shouldAbort: null);
+
+            var firstEvaluator = new FakeDesignEvaluator(Evaluate);
+            var firstResult = new DesignOptimizer(firstEvaluator).Optimize(seed, catalogue, withoutTheHookAtAll);
+
+            var secondEvaluator = new FakeDesignEvaluator(Evaluate);
+            var secondResult = new DesignOptimizer(secondEvaluator).Optimize(seed, catalogue, withAnExplicitNullHook);
+
+            AssertSameDesign(firstResult.Best, secondResult.Best);
+            Assert.Equal(firstResult.EvaluationsUsed, secondResult.EvaluationsUsed);
+            Assert.Equal(firstResult.HasLegalResult, secondResult.HasLegalResult);
+            Assert.Equal(firstResult.BudgetExhausted, secondResult.BudgetExhausted);
+        }
+
+        [Fact]
         public void Optimize_WithZeroEvaluationBudget_DoesNotThrowAndDoesNotClaimALegalSuggestion()
         {
             var seed = Candidate(

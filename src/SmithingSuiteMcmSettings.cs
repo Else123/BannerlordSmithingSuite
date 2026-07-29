@@ -77,51 +77,60 @@ namespace SmithingSuite
 
         // --- 4. Advisor -------------------------------------------------------
 
-        [SettingPropertyInteger("Evaluation budget", 100, 5000, "0", Order = 0, RequireRestart = false,
-            HintText = "Hard cap on how many candidate weapon designs the advisor evaluates per search. Higher " +
-                "can find a marginally better design at the cost of a longer search; lower keeps it instant.")]
+        [SettingPropertyInteger("Evaluation budget", 100, 2000, "0", Order = 0, RequireRestart = false,
+            HintText = "Soft cap on how many candidate weapon designs the advisor evaluates per search. Higher " +
+                "can find a marginally better design at the cost of a longer search. The time budget below is " +
+                "the real safety net against a freeze - this only shapes search quality.")]
         [SettingPropertyGroup(AdvisorGroup, GroupOrder = 3)]
         public int AdvisorEvaluationBudget { get; set; } = 500;
 
-        [SettingPropertyFloatingInteger("On foot: effective damage weight", 0.0f, 3.0f, "0.00", Order = 1, RequireRestart = false,
+        [SettingPropertyInteger("Time budget (ms)", 10, 500, "0", Order = 1, RequireRestart = false,
+            HintText = "Hard wall-clock cap on one 'Suggest best' search. This is the real safety net against a " +
+                "freeze: when it trips, the search stops immediately and returns the best design found so far, " +
+                "labelled as such, regardless of how much of the evaluation budget above was left. Roughly 3 " +
+                "frames at 60fps by default - a hitch, not a freeze.")]
+        [SettingPropertyGroup(AdvisorGroup, GroupOrder = 3)]
+        public int AdvisorTimeBudgetMs { get; set; } = 50;
+
+        [SettingPropertyFloatingInteger("On foot: effective damage weight", 0.0f, 3.0f, "0.00", Order = 2, RequireRestart = false,
             HintText = "How much a design's effective damage counts towards its on-foot score." + WeightOpinionNote)]
         [SettingPropertyGroup(AdvisorGroup, GroupOrder = 3)]
         public float OnFootEffectiveDamageWeight { get; set; } = 1.0f;
 
-        [SettingPropertyFloatingInteger("On foot: attack speed weight", 0.0f, 3.0f, "0.00", Order = 2, RequireRestart = false,
+        [SettingPropertyFloatingInteger("On foot: attack speed weight", 0.0f, 3.0f, "0.00", Order = 3, RequireRestart = false,
             HintText = "How much attack speed counts towards the on-foot score. On foot, footwork closes the " +
                 "distance, so speed is weighted higher than reach by default." + WeightOpinionNote)]
         [SettingPropertyGroup(AdvisorGroup, GroupOrder = 3)]
         public float OnFootAttackSpeedWeight { get; set; } = 1.0f;
 
-        [SettingPropertyFloatingInteger("On foot: reach weight", 0.0f, 3.0f, "0.00", Order = 3, RequireRestart = false,
+        [SettingPropertyFloatingInteger("On foot: reach weight", 0.0f, 3.0f, "0.00", Order = 4, RequireRestart = false,
             HintText = "How much reach counts towards the on-foot score." + WeightOpinionNote)]
         [SettingPropertyGroup(AdvisorGroup, GroupOrder = 3)]
         public float OnFootReachWeight { get; set; } = 0.2f;
 
-        [SettingPropertyFloatingInteger("On foot: handling weight", 0.0f, 3.0f, "0.00", Order = 4, RequireRestart = false,
+        [SettingPropertyFloatingInteger("On foot: handling weight", 0.0f, 3.0f, "0.00", Order = 5, RequireRestart = false,
             HintText = "How much handling counts towards the on-foot score." + WeightOpinionNote)]
         [SettingPropertyGroup(AdvisorGroup, GroupOrder = 3)]
         public float OnFootHandlingWeight { get; set; } = 0.5f;
 
-        [SettingPropertyFloatingInteger("Mounted: effective damage weight", 0.0f, 3.0f, "0.00", Order = 5, RequireRestart = false,
+        [SettingPropertyFloatingInteger("Mounted: effective damage weight", 0.0f, 3.0f, "0.00", Order = 6, RequireRestart = false,
             HintText = "How much a design's effective damage counts towards its mounted score." + WeightOpinionNote)]
         [SettingPropertyGroup(AdvisorGroup, GroupOrder = 3)]
         public float MountedEffectiveDamageWeight { get; set; } = 1.0f;
 
-        [SettingPropertyFloatingInteger("Mounted: attack speed weight", 0.0f, 3.0f, "0.00", Order = 6, RequireRestart = false,
+        [SettingPropertyFloatingInteger("Mounted: attack speed weight", 0.0f, 3.0f, "0.00", Order = 7, RequireRestart = false,
             HintText = "How much attack speed counts towards the mounted score." + WeightOpinionNote)]
         [SettingPropertyGroup(AdvisorGroup, GroupOrder = 3)]
         public float MountedAttackSpeedWeight { get; set; } = 0.4f;
 
-        [SettingPropertyFloatingInteger("Mounted: reach weight", 0.0f, 3.0f, "0.00", Order = 7, RequireRestart = false,
+        [SettingPropertyFloatingInteger("Mounted: reach weight", 0.0f, 3.0f, "0.00", Order = 8, RequireRestart = false,
             HintText = "How much reach counts towards the mounted score. Mounted, the horse closes the distance " +
                 "instead of footwork, so reach - hitting before being hit - is weighted higher than speed by default." +
                 WeightOpinionNote)]
         [SettingPropertyGroup(AdvisorGroup, GroupOrder = 3)]
         public float MountedReachWeight { get; set; } = 1.2f;
 
-        [SettingPropertyFloatingInteger("Mounted: handling weight", 0.0f, 3.0f, "0.00", Order = 8, RequireRestart = false,
+        [SettingPropertyFloatingInteger("Mounted: handling weight", 0.0f, 3.0f, "0.00", Order = 9, RequireRestart = false,
             HintText = "How much handling counts towards the mounted score." + WeightOpinionNote)]
         [SettingPropertyGroup(AdvisorGroup, GroupOrder = 3)]
         public float MountedHandlingWeight { get; set; } = 0.3f;
@@ -149,6 +158,7 @@ namespace SmithingSuite
             SmithingSuiteConfig.TravelStaminaMultiplier = s.TravelStaminaMultiplier;
 
             SmithingSuiteConfig.AdvisorEvaluationBudget = s.AdvisorEvaluationBudget;
+            SmithingSuiteConfig.AdvisorTimeBudgetMs = s.AdvisorTimeBudgetMs;
 
             ScoreWeights.OnFootEffectiveDamageWeight = s.OnFootEffectiveDamageWeight;
             ScoreWeights.OnFootAttackSpeedWeight = s.OnFootAttackSpeedWeight;
