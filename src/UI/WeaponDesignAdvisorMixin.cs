@@ -8,14 +8,18 @@ using SmithingSuite.Integration;
 using static SmithingSuite.Advisor.AdvisorPresentation;
 using TaleWorlds.CampaignSystem.ViewModelCollection.WeaponCrafting.WeaponDesign;
 using TaleWorlds.Core;
+using TaleWorlds.Core.ViewModelCollection.Information;
 using TaleWorlds.Library;
+using TaleWorlds.Localization;
 
 namespace SmithingSuite.UI
 {
     /// <summary>
-    /// Inline crafting advisor (SPEC-SLICE4-5.md Slice 5, TODO 11): a UIExtenderEx view-model mixin
-    /// on vanilla's <see cref="WeaponDesignVM"/> that scores the design the player is currently
-    /// building and, on request, searches for the best design within the same template.
+    /// Crafting advisor (SPEC-SLICE4-5.md Slice 5, TODO 11): a UIExtenderEx view-model mixin on
+    /// vanilla's <see cref="WeaponDesignVM"/> that scores the design the player is currently building
+    /// and, on request, searches for the best design within the same template. The scored result is
+    /// presented in a popup opened from the crafting screen's own control cluster - see
+    /// <c>Prefabs\AdvisorPopup.xml</c> - rather than as a panel floating over the 3D scene.
     ///
     /// Two very different cost budgets share this class, per the spec's performance constraint:
     /// <list type="bullet">
@@ -23,12 +27,12 @@ namespace SmithingSuite.UI
     /// <c>GauntletCraftingScreen</c> may invoke every frame - it must stay cheap (read already
     /// engine-computed numbers, score them, short-circuit if nothing changed) and must never touch
     /// <c>Crafting.GenerateItem</c> or <see cref="DesignOptimizer"/>.</item>
-    /// <item><see cref="ExecuteSuggestBest"/> runs only on the panel's button click and is allowed to
+    /// <item><see cref="ExecuteSuggestBest"/> runs only on the popup's button click and is allowed to
     /// be expensive - it is the only place in this class permitted to run the optimizer.</item>
     /// </list>
     ///
     /// Fail-safe by construction (AC15): every public entry point is wrapped in try/catch. Any
-    /// exception hides the panel (<see cref="AdvisorIsVisible"/> goes false) and is logged at most
+    /// exception closes the popup (<see cref="AdvisorIsPopupOpen"/> goes false) and is logged at most
     /// once, mirroring <see cref="EngineDesignEvaluator"/>'s own once-per-run failure logging - the
     /// vanilla crafting screen must keep working even if the game's <c>WeaponDesignVM</c> shape
     /// changes under this mixin in a future update.
@@ -36,34 +40,59 @@ namespace SmithingSuite.UI
     [ViewModelMixin("RefreshItem")]
     public sealed class WeaponDesignAdvisorMixin : BaseViewModelMixin<WeaponDesignVM>
     {
+        /// <summary>
+        /// Usage index the advisor reads. Vanilla <c>RefreshStats</c> reads
+        /// <c>SecondaryUsageSelector.SelectedIndex</c> to support dual-usage weapons (e.g. a spear
+        /// that can also be thrown), but that member is not decompile-verified as public and
+        /// reliably populated, so this stays on a weapon's primary usage - correct for the
+        /// overwhelming majority of craftable designs and wrong only for designs with a selectable
+        /// secondary usage. Revisit once the member is verified.
+        /// </summary>
+        private const int PrimaryUsageIndex = 0;
+
+        // Display-only normalisation ceilings for the two axes the crafting template has no MaxValue
+        // for (see FillRatioFor). These are chosen presentation constants, NOT game-derived limits:
+        // above them the bar simply reads full while the number printed next to it stays exact.
+        private const float EffectiveDamageDisplayCeiling = 100f;
+        private const float SaleValueDisplayCeiling = 50000f;
+
+        // WeaponScorer's axis names. Matching on the display name is what keeps the Advisor layer's
+        // public API untouched (it exposes no axis identity of its own); an unrecognised name falls
+        // through to a zero ceiling, i.e. an empty bar next to a still-correct number, so a future
+        // rename degrades the bar rather than the data.
+        private const string EffectiveDamageAxisName = "Effective Damage";
+        private const string AttackSpeedAxisName = "Attack Speed";
+        private const string ReachAxisName = "Reach";
+        private const string HandlingAxisName = "Handling";
+        private const string SaleValueAxisName = "Sale Value";
+
         // Logged once per run (not once per call) - RefreshItem can fire every frame, so a broken
         // mixin must not spam the log the same way EngineDesignEvaluator's own failures do not.
         // Deliberately an INSTANCE field, not static (code review FINDING 2, mirroring
         // EngineDesignEvaluator._hasLoggedFailure's own reasoning): a static flag would persist for
         // the whole game session across every crafting-screen open and every mixin instance, so one
         // benign first-frame exception would burn it and a genuinely different failure an hour later
-        // would then log nothing while the panel just silently vanished.
+        // would then log nothing while the popup just silently refused to open.
         private bool _hasLoggedFailure;
 
         // Separate one-shot flags per message (not a single shared bool): OnRefresh can fire every
         // frame, and the "not yet ready" case legitimately happens on the very first tick or two
         // before Crafting.GetCurrentCraftedItemObject() has a real design to return - it must log
-        // once so that state is visible, but must never fire again once the panel has started
-        // succeeding, and must not prevent the success line from ever logging (bug diagnosis: this
-        // mixin previously logged nothing at all on the success path, which is why the bug needed a
-        // code read).
+        // once so that state is visible, but must never fire again once the advisor has started
+        // succeeding, and must not prevent the success line from ever logging.
         private bool _hasLoggedFirstSuccess;
         private bool _hasLoggedNotYetReady;
+        private bool _hasLoggedPopupOpened;
 
         // Root-cause fix (SPEC-SLICE4-5.md "Kontext"): WeaponDesignVM.CraftedItemObject is only ever
         // assigned in CraftingVM.ExecuteMainAction() - i.e. only after the player clicks the final
-        // Craft button - so during design it was always null and this panel never had data. The fix
+        // Craft button - so during design it was always null and the advisor never had data. The fix
         // reads the same private Crafting field vanilla's own WeaponDesignVM.RefreshStats() reads,
         // via reflection (WeaponDesignVM exposes no public accessor for it). Cached once resolved
         // (the field's presence cannot change at runtime for a given game version); if resolution
         // fails, _cachedCrafting stays null and the NEXT call retries rather than latching a
         // transient miss as permanent - a future game patch renaming the field must not permanently
-        // disable the panel any more than a genuine one-frame timing miss should.
+        // disable the advisor any more than a genuine one-frame timing miss should.
         private Crafting _cachedCrafting;
 
         // One-shot, separate from _hasLoggedFailure (which covers the generic try/catch fail-safe):
@@ -85,15 +114,28 @@ namespace SmithingSuite.UI
         private CraftingPiece _lastPommelPiece;
         private int _lastPommelScale;
 
-        private bool _advisorIsVisible;
-        private string _advisorVerdictText = string.Empty;
+        // What the single explanation block falls back to when the pointer is not over any axis row.
+        // Held separately from AdvisorExplanationText so that un-hovering an axis restores whatever
+        // was last shown - the verdict, or the suggestion if a search has since produced one -
+        // instead of silently discarding it.
+        private string _baseExplanation;
+
+        private bool _advisorIsPopupOpen;
+        private string _advisorExplanationText = string.Empty;
         private MBBindingList<AdvisorAxisItemVM> _advisorAxes;
-        private string _advisorSuggestionText = string.Empty;
-        private bool _advisorHasSuggestion;
         private bool _advisorIsBusy;
         private bool _advisorIsSuggestButtonEnabled = true;
         private bool _advisorIsMounted;
         private string _advisorContextButtonText;
+        // Set once in the constructor and never again, but written through the same full get/set
+        // property shape every vanilla view model uses for bound members (WeaponDesignVM.RandomizeHint
+        // and friends) rather than exposed read-only - a binding form vanilla nowhere relies on.
+        private string _advisorTitleText;
+        private string _advisorSuggestButtonText;
+        private BasicTooltipViewModel _advisorTriggerHint;
+        private BasicTooltipViewModel _advisorSuggestHint;
+        private BasicTooltipViewModel _advisorContextHint;
+        private BasicTooltipViewModel _advisorCloseHint;
 
         public WeaponDesignAdvisorMixin(WeaponDesignVM vm) : base(vm)
         {
@@ -107,7 +149,27 @@ namespace SmithingSuite.UI
             SmithingSuiteMcmSettings.Apply();
 
             _advisorAxes = new MBBindingList<AdvisorAxisItemVM>();
-            _advisorContextButtonText = ContextButtonLabel(mounted: false);
+            AdvisorTitleText = Localized("{=SmithingSuite_Advisor_Title}Crafting Advisor");
+            AdvisorSuggestButtonText = Localized("{=SmithingSuite_Advisor_SuggestBest}Suggest Best");
+            _advisorContextButtonText = ContextLabel(mounted: false);
+            _baseExplanation = Localized(
+                "{=SmithingSuite_Advisor_NoDesign}No design to score yet - pick pieces for this "
+                + "weapon and the advisor will rate what you are building.");
+            _advisorExplanationText = _baseExplanation;
+
+            // Hints are built once and reused: BasicTooltipViewModel takes a delegate that the
+            // tooltip system calls at hover time, so a single instance per button stays correct even
+            // though the mixin's state changes underneath it.
+            AdvisorTriggerHint = Hint("{=SmithingSuite_Advisor_TriggerHint}Open the crafting "
+                + "advisor: scored axes with a plain-language reason for each, for the design you "
+                + "are building right now.");
+            AdvisorSuggestHint = Hint("{=SmithingSuite_Advisor_SuggestHint}Search this template's "
+                + "unlocked pieces for the best-scoring design your smith can actually craft. Runs "
+                + "under a time budget and reports the best design found.");
+            AdvisorContextHint = Hint("{=SmithingSuite_Advisor_ContextHint}Switch the scoring "
+                + "weights between fighting on foot and fighting from horseback.");
+            AdvisorCloseHint = Hint("{=SmithingSuite_Advisor_CloseHint}Close the advisor and go "
+                + "back to the design.");
 
             // One-shot, unconditional (the constructor itself only ever runs once per mixin
             // instance): confirms UIExtenderEx actually constructed this mixin, distinct from the
@@ -121,28 +183,116 @@ namespace SmithingSuite.UI
         }
 
         [DataSourceProperty]
-        public bool AdvisorIsVisible
+        public bool AdvisorIsPopupOpen
         {
-            get { return _advisorIsVisible; }
+            get { return _advisorIsPopupOpen; }
             set
             {
-                if (value != _advisorIsVisible)
+                if (value != _advisorIsPopupOpen)
                 {
-                    _advisorIsVisible = value;
+                    _advisorIsPopupOpen = value;
                     OnPropertyChanged();
                 }
             }
         }
 
         [DataSourceProperty]
-        public string AdvisorVerdictText
+        public string AdvisorTitleText
         {
-            get { return _advisorVerdictText; }
+            get { return _advisorTitleText; }
             set
             {
-                if (value != _advisorVerdictText)
+                if (value != _advisorTitleText)
                 {
-                    _advisorVerdictText = value;
+                    _advisorTitleText = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        [DataSourceProperty]
+        public string AdvisorSuggestButtonText
+        {
+            get { return _advisorSuggestButtonText; }
+            set
+            {
+                if (value != _advisorSuggestButtonText)
+                {
+                    _advisorSuggestButtonText = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        [DataSourceProperty]
+        public BasicTooltipViewModel AdvisorTriggerHint
+        {
+            get { return _advisorTriggerHint; }
+            set
+            {
+                if (value != _advisorTriggerHint)
+                {
+                    _advisorTriggerHint = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        [DataSourceProperty]
+        public BasicTooltipViewModel AdvisorSuggestHint
+        {
+            get { return _advisorSuggestHint; }
+            set
+            {
+                if (value != _advisorSuggestHint)
+                {
+                    _advisorSuggestHint = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        [DataSourceProperty]
+        public BasicTooltipViewModel AdvisorContextHint
+        {
+            get { return _advisorContextHint; }
+            set
+            {
+                if (value != _advisorContextHint)
+                {
+                    _advisorContextHint = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        [DataSourceProperty]
+        public BasicTooltipViewModel AdvisorCloseHint
+        {
+            get { return _advisorCloseHint; }
+            set
+            {
+                if (value != _advisorCloseHint)
+                {
+                    _advisorCloseHint = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        /// <summary>
+        /// The single explanation block under the axis rows: the verdict (or the latest suggestion)
+        /// by default, and the hovered axis's reason for as long as the pointer stays on that row.
+        /// </summary>
+        [DataSourceProperty]
+        public string AdvisorExplanationText
+        {
+            get { return _advisorExplanationText; }
+            set
+            {
+                if (value != _advisorExplanationText)
+                {
+                    _advisorExplanationText = value;
                     OnPropertyChanged();
                 }
             }
@@ -163,34 +313,6 @@ namespace SmithingSuite.UI
         }
 
         [DataSourceProperty]
-        public string AdvisorSuggestionText
-        {
-            get { return _advisorSuggestionText; }
-            set
-            {
-                if (value != _advisorSuggestionText)
-                {
-                    _advisorSuggestionText = value;
-                    OnPropertyChanged();
-                }
-            }
-        }
-
-        [DataSourceProperty]
-        public bool AdvisorHasSuggestion
-        {
-            get { return _advisorHasSuggestion; }
-            set
-            {
-                if (value != _advisorHasSuggestion)
-                {
-                    _advisorHasSuggestion = value;
-                    OnPropertyChanged();
-                }
-            }
-        }
-
-        [DataSourceProperty]
         public bool AdvisorIsBusy
         {
             get { return _advisorIsBusy; }
@@ -200,7 +322,7 @@ namespace SmithingSuite.UI
                 {
                     _advisorIsBusy = value;
                     OnPropertyChanged();
-                    // Derived, not independent state - the panel binds IsEnabled to this rather than
+                    // Derived, not independent state - the popup binds IsEnabled to this rather than
                     // to "!@AdvisorIsBusy" because vanilla's own prefabs never use "!@" negation
                     // syntax anywhere in the shipped GUI, so it is not a binding form worth risking.
                     AdvisorIsSuggestButtonEnabled = !value;
@@ -262,12 +384,40 @@ namespace SmithingSuite.UI
             RefreshFromCurrentItem(force: false);
         }
 
+        public void ExecuteOpenAdvisorPopup()
+        {
+            try
+            {
+                AdvisorIsPopupOpen = true;
+
+                if (!_hasLoggedPopupOpened)
+                {
+                    _hasLoggedPopupOpened = true;
+                    SmithingLog.Line("WeaponDesignAdvisorMixin: advisor popup opened with "
+                        + AdvisorAxes.Count + " axes");
+                    // The crafting screen has no town-menu run around it - the batching
+                    // optimisation does not apply here (see SmithingLog.Flush()).
+                    SmithingLog.Flush();
+                }
+            }
+            catch (Exception ex)
+            {
+                AdvisorIsPopupOpen = false;
+                LogFailureOnce(ex);
+            }
+        }
+
+        public void ExecuteCloseAdvisorPopup()
+        {
+            AdvisorIsPopupOpen = false;
+        }
+
         public void ExecuteToggleMountedContext()
         {
             try
             {
                 AdvisorIsMounted = !AdvisorIsMounted;
-                AdvisorContextButtonText = ContextButtonLabel(AdvisorIsMounted);
+                AdvisorContextButtonText = ContextLabel(AdvisorIsMounted);
                 // Context flips ScoreWeights.ForContext's axis weights - force a rescore even though
                 // the design key itself has not changed, so the toggle takes visible effect
                 // immediately instead of waiting for the next incidental RefreshItem tick. Still just
@@ -276,7 +426,7 @@ namespace SmithingSuite.UI
             }
             catch (Exception ex)
             {
-                AdvisorIsVisible = false;
+                AdvisorIsPopupOpen = false;
                 LogFailureOnce(ex);
             }
         }
@@ -329,8 +479,8 @@ namespace SmithingSuite.UI
                 PieceCatalogue catalogue = BuildCatalogue(vm);
                 if (catalogue.AvailablePieces.Count == 0)
                 {
-                    AdvisorSuggestionText = "No unlocked pieces are available to search for this template.";
-                    AdvisorHasSuggestion = true;
+                    SetBaseExplanation(Localized("{=SmithingSuite_Advisor_NoPieces}No unlocked "
+                        + "pieces are available to search for this template."));
                     return;
                 }
 
@@ -355,17 +505,50 @@ namespace SmithingSuite.UI
 
                 LogIfAbortedOnTime(result, searchClock.ElapsedMilliseconds, timeBudgetMs, evaluationBudget);
 
-                AdvisorSuggestionText = DescribeSuggestion(result);
-                AdvisorHasSuggestion = true;
+                SetBaseExplanation(DescribeSuggestion(result));
             }
             catch (Exception ex)
             {
-                AdvisorIsVisible = false;
+                AdvisorIsPopupOpen = false;
                 LogFailureOnce(ex);
             }
             finally
             {
                 AdvisorIsBusy = false;
+            }
+        }
+
+        /// <summary>
+        /// Called from an axis row's hover catcher (via <see cref="AdvisorAxisItemVM"/>) to swap the
+        /// single explanation block to that axis's reason. Hover is a per-frame-ish event on the
+        /// render thread, so this does nothing but assign a string.
+        /// </summary>
+        private void ShowAxisReason(AdvisorAxisItemVM axis)
+        {
+            try
+            {
+                if (axis != null)
+                {
+                    AdvisorExplanationText = axis.Reason;
+                }
+            }
+            catch (Exception ex)
+            {
+                AdvisorIsPopupOpen = false;
+                LogFailureOnce(ex);
+            }
+        }
+
+        private void RestoreBaseExplanation()
+        {
+            try
+            {
+                AdvisorExplanationText = _baseExplanation;
+            }
+            catch (Exception ex)
+            {
+                AdvisorIsPopupOpen = false;
+                LogFailureOnce(ex);
             }
         }
 
@@ -399,8 +582,8 @@ namespace SmithingSuite.UI
         /// <summary>
         /// The shared cheap path behind both <see cref="OnRefresh"/> (every incidental tick) and
         /// <see cref="ExecuteToggleMountedContext"/> (an explicit but still-cheap re-score): reads
-        /// <see cref="WeaponDesignVM.CraftedItemObject"/>'s already-engine-computed stats and scores
-        /// them via <see cref="WeaponScorer"/>. Never calls <c>Crafting.GenerateItem</c> or
+        /// the engine's already-computed stats for the live design and scores them via
+        /// <see cref="WeaponScorer"/>. Never calls <c>Crafting.GenerateItem</c> or
         /// <see cref="DesignOptimizer"/> - those are reserved for <see cref="ExecuteSuggestBest"/>.
         ///
         /// <paramref name="force"/> = false is the per-frame path: if the four selected pieces (engine
@@ -416,7 +599,6 @@ namespace SmithingSuite.UI
                 WeaponDesignVM vm = ViewModel;
                 if (vm == null)
                 {
-                    AdvisorIsVisible = false;
                     return;
                 }
 
@@ -440,7 +622,8 @@ namespace SmithingSuite.UI
                     return;
                 }
 
-                WeaponStats stats = ReadCurrentWeaponStats();
+                Crafting crafting = ResolveCrafting();
+                WeaponStats stats = ReadCurrentWeaponStats(crafting);
                 if (stats == null)
                 {
                     // Do NOT commit the cache here. RefreshFromCurrentItem can run before
@@ -450,14 +633,13 @@ namespace SmithingSuite.UI
                     // Committing the cache before this null check would latch that failed attempt as
                     // "the current design", every subsequent frame would then read as unchanged, and
                     // OnRefresh would short-circuit before ever reaching the scoring code below - the
-                    // panel would stay hidden for the rest of the session no matter what the player
+                    // advisor would stay empty for the rest of the session no matter what the player
                     // crafted. Leaving the cache untouched here means the next frame is not
                     // "unchanged" yet and retries.
-                    AdvisorIsVisible = false;
                     if (!_hasLoggedNotYetReady)
                     {
                         _hasLoggedNotYetReady = true;
-                        SmithingLog.Line("WeaponDesignAdvisorMixin: crafted item not yet available, advisor panel waiting for a design");
+                        SmithingLog.Line("WeaponDesignAdvisorMixin: crafted item not yet available, advisor waiting for a design");
                         // The crafting screen has no town-menu run around it - the batching
                         // optimisation does not apply here (see SmithingLog.Flush()).
                         SmithingLog.Flush();
@@ -474,18 +656,15 @@ namespace SmithingSuite.UI
                 CommitLastDesign(bladePiece, bladeScale, guardPiece, guardScale,
                     handlePiece, handleScale, pommelPiece, pommelScale);
 
-                UpdateAxes(score);
-                AdvisorVerdictText = BuildVerdict(score, context);
+                UpdateAxes(score, crafting);
                 // The design (or context) changed - any previously computed suggestion no longer
-                // describes what's on screen, so it is withdrawn rather than left stale.
-                AdvisorSuggestionText = string.Empty;
-                AdvisorHasSuggestion = false;
-                AdvisorIsVisible = true;
+                // describes what is on screen, so the explanation falls back to the fresh verdict.
+                SetBaseExplanation(BuildVerdict(score, context));
 
                 if (!_hasLoggedFirstSuccess)
                 {
                     _hasLoggedFirstSuccess = true;
-                    SmithingLog.Line("WeaponDesignAdvisorMixin: advisor panel shown, scored "
+                    SmithingLog.Line("WeaponDesignAdvisorMixin: advisor data ready, scored "
                         + score.Axes.Count + " axes");
                     // The crafting screen has no town-menu run around it - the batching
                     // optimisation does not apply here (see SmithingLog.Flush()).
@@ -494,7 +673,7 @@ namespace SmithingSuite.UI
             }
             catch (Exception ex)
             {
-                AdvisorIsVisible = false;
+                AdvisorIsPopupOpen = false;
                 LogFailureOnce(ex);
             }
         }
@@ -511,9 +690,8 @@ namespace SmithingSuite.UI
         /// mapping <see cref="EngineDesignEvaluator"/>'s own (expensive) evaluator uses - so this
         /// cheap path can never silently drift from it.
         /// </summary>
-        private WeaponStats ReadCurrentWeaponStats()
+        private static WeaponStats ReadCurrentWeaponStats(Crafting crafting)
         {
-            Crafting crafting = ResolveCrafting();
             if (crafting == null)
             {
                 return null;
@@ -525,21 +703,7 @@ namespace SmithingSuite.UI
                 return null;
             }
 
-            // Usage index: vanilla RefreshStats reads SecondaryUsageSelector.SelectedIndex to
-            // support dual-usage weapons (e.g. a spear that can also be thrown one-handed).
-            // "SecondaryUsageSelector" is confirmed present as a member name in
-            // TaleWorlds.CampaignSystem.ViewModelCollection.dll's metadata, but this session had no
-            // shell/ilspycmd access to decompile WeaponDesignVM and confirm it is a public,
-            // reliably-populated member (vs. private, or only populated for specific templates) -
-            // reflecting onto an unverified member would just trade one unverified assumption for
-            // another, less honestly. Falling back to usage index 0 (a weapon's primary/default
-            // usage - the same index EngineDesignEvaluator's own WeaponComponent.PrimaryWeapon
-            // access already implied before this fix) is the safe default: correct for the
-            // overwhelming majority of single-usage craftable designs, and only wrong for designs
-            // with a selectable secondary usage - a narrower miss than the total blank panel this
-            // fix closes. Revisit once SecondaryUsageSelector is decompile-verified.
-            const int usageIndex = 0;
-            WeaponComponentData weapon = item.GetWeaponWithUsageIndex(usageIndex);
+            WeaponComponentData weapon = item.GetWeaponWithUsageIndex(PrimaryUsageIndex);
             return weapon == null ? null : EngineDesignEvaluator.ToWeaponStats(weapon, item);
         }
 
@@ -551,7 +715,7 @@ namespace SmithingSuite.UI
         /// reflection-shaped dependency for this class to own. Cached in <see cref="_cachedCrafting"/>
         /// once resolved; a null result is deliberately NOT cached, so a transient miss (e.g. called
         /// before the VM has finished constructing) retries on the next call instead of permanently
-        /// disabling the panel - only a genuine, permanent failure (e.g. a future game patch renames
+        /// disabling the advisor - only a genuine, permanent failure (e.g. a future game patch renames
         /// the field) keeps failing, and that case is logged loudly exactly once via
         /// <see cref="_hasLoggedCraftingFieldMissing"/> so the cause is obvious in the log instead of
         /// yet another silently-empty panel.
@@ -570,7 +734,7 @@ namespace SmithingSuite.UI
                 {
                     _hasLoggedCraftingFieldMissing = true;
                     SmithingLog.Line("WeaponDesignAdvisorMixin: could not resolve WeaponDesignVM's "
-                        + "private field '_crafting' via GetPrivate<Crafting> - advisor panel disabled "
+                        + "private field '_crafting' via GetPrivate<Crafting> - advisor disabled "
                         + "until this is fixed for the current game version");
                     // The crafting screen has no town-menu run around it - the batching
                     // optimisation does not apply here (see SmithingLog.Flush()).
@@ -583,8 +747,13 @@ namespace SmithingSuite.UI
             return _cachedCrafting;
         }
 
-        private void UpdateAxes(WeaponScore score)
+        private void UpdateAxes(WeaponScore score, Crafting crafting)
         {
+            float reachMax;
+            float speedMax;
+            float handlingMax;
+            ReadTemplateStatMaxima(crafting, out reachMax, out speedMax, out handlingMax);
+
             if (AdvisorAxes == null)
             {
                 AdvisorAxes = new MBBindingList<AdvisorAxisItemVM>();
@@ -593,8 +762,115 @@ namespace SmithingSuite.UI
             AdvisorAxes.Clear();
             foreach (ScoreAxis axis in score.Axes)
             {
-                AdvisorAxes.Add(new AdvisorAxisItemVM(axis.Name, axis.Value, axis.Reason));
+                float fillRatio = FillRatioFor(axis.Name, axis.Value, reachMax, speedMax, handlingMax);
+                AdvisorAxes.Add(new AdvisorAxisItemVM(axis.Name, axis.Value, axis.Reason, fillRatio,
+                    ShowAxisReason, RestoreBaseExplanation));
             }
+        }
+
+        /// <summary>
+        /// The bar denominators the game itself uses on this screen. <c>Crafting.GetStatDatas</c> is
+        /// what feeds vanilla's own stat rows: for every stat the current template exposes it yields
+        /// the live value plus the template's <c>MaxValue</c> for that stat, so reusing those maxima
+        /// makes the advisor's reach / speed / handling bars fill to exactly the same fraction as the
+        /// vanilla bars a few centimetres to the left. Only called when the design actually changed,
+        /// never on an idle frame.
+        ///
+        /// Attack speed takes the larger of the template's thrust and swing maxima: the scorer picks
+        /// whichever attack mode penetrates better and reports that mode's speed under one axis name,
+        /// so a single shared denominator is the only one under which the bar stays comparable when
+        /// the chosen mode flips. A stat the template does not expose leaves its maximum at 0, which
+        /// <see cref="FillRatioFor"/> reads as "no bar" rather than dividing by zero.
+        /// </summary>
+        private static void ReadTemplateStatMaxima(Crafting crafting, out float reachMax, out float speedMax, out float handlingMax)
+        {
+            reachMax = 0f;
+            speedMax = 0f;
+            handlingMax = 0f;
+            if (crafting == null)
+            {
+                return;
+            }
+
+            foreach (CraftingStatData stat in crafting.GetStatDatas(PrimaryUsageIndex))
+            {
+                if (!stat.IsValid)
+                {
+                    continue;
+                }
+
+                switch (stat.Type)
+                {
+                    case CraftingTemplate.CraftingStatTypes.WeaponReach:
+                        reachMax = Math.Max(reachMax, stat.MaxValue);
+                        break;
+                    case CraftingTemplate.CraftingStatTypes.ThrustSpeed:
+                    case CraftingTemplate.CraftingStatTypes.SwingSpeed:
+                        speedMax = Math.Max(speedMax, stat.MaxValue);
+                        break;
+                    case CraftingTemplate.CraftingStatTypes.Handling:
+                        handlingMax = Math.Max(handlingMax, stat.MaxValue);
+                        break;
+                }
+            }
+        }
+
+        /// <summary>
+        /// How full an axis's bar is drawn, always in 0..1. Reach, attack speed and handling divide
+        /// by the template's own maximum for the matching crafting stat (see
+        /// <see cref="ReadTemplateStatMaxima"/>). Effective damage and sale value have no template
+        /// maximum to borrow - effective damage is this mod's own armour-model figure and sale value
+        /// is unbounded gold - so they divide by a documented display constant instead. A
+        /// non-positive denominator yields an empty bar rather than a division by zero, and the
+        /// result is clamped so a value above the ceiling reads as full while the number printed next
+        /// to the bar stays exact.
+        /// </summary>
+        private static float FillRatioFor(string axisName, float value, float reachMax, float speedMax, float handlingMax)
+        {
+            float ceiling;
+            if (axisName == ReachAxisName)
+            {
+                ceiling = reachMax;
+            }
+            else if (axisName == AttackSpeedAxisName)
+            {
+                ceiling = speedMax;
+            }
+            else if (axisName == HandlingAxisName)
+            {
+                ceiling = handlingMax;
+            }
+            else if (axisName == EffectiveDamageAxisName)
+            {
+                ceiling = EffectiveDamageDisplayCeiling;
+            }
+            else if (axisName == SaleValueAxisName)
+            {
+                ceiling = SaleValueDisplayCeiling;
+            }
+            else
+            {
+                ceiling = 0f;
+            }
+
+            if (ceiling <= 0f)
+            {
+                return 0f;
+            }
+
+            float ratio = value / ceiling;
+            if (ratio < 0f)
+            {
+                return 0f;
+            }
+
+            return ratio > 1f ? 1f : ratio;
+        }
+
+        private void SetBaseExplanation(string text)
+        {
+            _baseExplanation = text;
+            AdvisorExplanationText = text;
         }
 
         /// <summary>
@@ -758,6 +1034,27 @@ namespace SmithingSuite.UI
             pieces.Add(new DesignPiece(piece.StringId, pieceVm.PieceType, pieceVm.Tier, element.ScalePercentage));
         }
 
+        private static string ContextLabel(bool mounted)
+        {
+            return mounted
+                ? Localized("{=SmithingSuite_Advisor_ContextMounted}Context: Mounted")
+                : Localized("{=SmithingSuite_Advisor_ContextOnFoot}Context: On Foot");
+        }
+
+        private static BasicTooltipViewModel Hint(string localizationKeyedText)
+        {
+            string text = Localized(localizationKeyedText);
+            return new BasicTooltipViewModel(() => text);
+        }
+
+        // Every string this class hands to the prefab goes through here: the prefab itself carries no
+        // literal display text (vanilla prefabs carry none either), so the "{=id}Fallback" form is
+        // what makes these translatable without a module_strings entry having to exist yet.
+        private static string Localized(string keyedText)
+        {
+            return new TextObject(keyedText, null).ToString();
+        }
+
         private void LogFailureOnce(Exception ex)
         {
             if (_hasLoggedFailure)
@@ -766,7 +1063,7 @@ namespace SmithingSuite.UI
             }
 
             _hasLoggedFailure = true;
-            SmithingLog.Line("WeaponDesignAdvisorMixin: disabling advisor panel after exception - " + ex.Message);
+            SmithingLog.Line("WeaponDesignAdvisorMixin: disabling advisor after exception - " + ex.Message);
             // The crafting screen has no town-menu run around it - the batching optimisation does
             // not apply here, so flush immediately (see SmithingLog.Flush()).
             SmithingLog.Flush();
@@ -774,21 +1071,32 @@ namespace SmithingSuite.UI
     }
 
     /// <summary>
-    /// One row in the advisor panel's axis list. A plain <see cref="ViewModel"/> (not the mixin
+    /// One scored axis row in the advisor popup. A plain <see cref="ViewModel"/> (not the mixin
     /// itself) because <see cref="MBBindingList{T}"/> item templates bind against real view-model
     /// instances - one per <see cref="WeaponScore.Axes"/> entry, rebuilt whenever the design changes.
+    ///
+    /// The two hover commands are handled here rather than through a <c>..\..\</c> parent path in the
+    /// prefab (which vanilla does use, but which silently breaks the moment the row's nesting depth
+    /// changes) and are forwarded to the mixin through callbacks handed in at construction.
     /// </summary>
     public sealed class AdvisorAxisItemVM : ViewModel
     {
+        private readonly Action<AdvisorAxisItemVM> _onHoverBegin;
+        private readonly Action _onHoverEnd;
         private string _name;
         private string _valueText;
         private string _reason;
+        private float _fillRatio;
 
-        public AdvisorAxisItemVM(string name, float value, string reason)
+        public AdvisorAxisItemVM(string name, float value, string reason, float fillRatio,
+            Action<AdvisorAxisItemVM> onHoverBegin, Action onHoverEnd)
         {
             _name = name;
             _valueText = value.ToString("F1");
             _reason = reason;
+            _fillRatio = fillRatio;
+            _onHoverBegin = onHoverBegin;
+            _onHoverEnd = onHoverEnd;
         }
 
         [DataSourceProperty]
@@ -830,6 +1138,37 @@ namespace SmithingSuite.UI
                     _reason = value;
                     OnPropertyChangedWithValue(value, "Reason");
                 }
+            }
+        }
+
+        /// <summary>How full this axis's bar is drawn, 0..1 - see the mixin's FillRatioFor.</summary>
+        [DataSourceProperty]
+        public float FillRatio
+        {
+            get { return _fillRatio; }
+            set
+            {
+                if (value != _fillRatio)
+                {
+                    _fillRatio = value;
+                    OnPropertyChangedWithValue(value, "FillRatio");
+                }
+            }
+        }
+
+        public void ExecuteHoverAxis()
+        {
+            if (_onHoverBegin != null)
+            {
+                _onHoverBegin(this);
+            }
+        }
+
+        public void ExecuteUnhoverAxis()
+        {
+            if (_onHoverEnd != null)
+            {
+                _onHoverEnd();
             }
         }
     }

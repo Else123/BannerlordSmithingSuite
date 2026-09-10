@@ -1,0 +1,29 @@
+<!--
+  Smithing Suite advisor trigger button (SPEC-SLICE4-5.md Slice 5).
+
+  UIExtenderEx Prefabs2 insertion FRAGMENT, not a standalone prefab: [PrefabExtensionFileName]
+  (AdvisorTriggerButtonPrefab.cs) takes this file's DOCUMENT ELEMENT directly as the node to insert,
+  so the root here is the widget itself - no <Prefab>/<Window>/<Constants> wrapper, which also means
+  brush-derived !Constants are unavailable and every size below has to be a literal copied from the
+  vanilla file it imitates.
+
+  Inserted into Crafting.xml's "RightBottomButtons" ListPanel, next to the Reset-Angle and
+  Scabbard-Toggle buttons. Geometry, brushes and the hint pattern are copied from the Reset-Angle
+  button (Crafting.xml lines 147-151) so this reads as a third member of that cluster; the icon uses
+  Crafting.Craft.Icon at the size vanilla itself uses for it (Crafting.xml line 453).
+
+  DataSource="{WeaponDesign}" is required and is not inherited: RightBottomButtons sits directly
+  under CraftingScreenWidget (CraftingVM), while WeaponDesignAdvisorMixin merges its properties into
+  WeaponDesignVM. Every button in the vanilla control clusters does the same (Crafting.xml line 154).
+-->
+<ButtonWidget Id="SmithingSuiteAdvisorButton" DataSource="{WeaponDesign}" DoNotPassEventsToChildren="true" WidthSizePolicy="Fixed" HeightSizePolicy="Fixed" SuggestedWidth="58" SuggestedHeight="69" HorizontalAlignment="Right" VerticalAlignment="Bottom" UpdateChildrenStates="true" Command.Click="ExecuteOpenAdvisorPopup" GamepadNavigationIndex="2">
+  <Children>
+
+    <!--Icon follows the button's hover/pressed state via UpdateChildrenStates, exactly as the
+        vanilla category-tab icons do (Crafting.xml line 446).-->
+    <BrushWidget DoNotAcceptEvents="true" WidthSizePolicy="Fixed" HeightSizePolicy="Fixed" SuggestedWidth="45" SuggestedHeight="40" HorizontalAlignment="Center" VerticalAlignment="Center" Brush="Crafting.Craft.Icon" />
+
+    <HintWidget DataSource="{AdvisorTriggerHint}" WidthSizePolicy="Fixed" HeightSizePolicy="Fixed" SuggestedWidth="58" SuggestedHeight="69" HorizontalAlignment="Center" VerticalAlignment="Bottom" Command.HoverBegin="ExecuteBeginHint" Command.HoverEnd="ExecuteEndHint" />
+
+  </Children>
+</ButtonWidget>

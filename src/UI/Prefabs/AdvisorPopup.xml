@@ -1,0 +1,157 @@
+<!--
+  Smithing Suite crafting-advisor popup (SPEC-SLICE4-5.md Slice 5).
+
+  UIExtenderEx Prefabs2 insertion FRAGMENT (see AdvisorTriggerButton.xml's header for what that
+  implies): the root element below IS the inserted node, so there is no <Constants> block and every
+  dimension is a literal lifted from the vanilla file it imitates.
+
+  Inserted as the LAST child of CraftingScreenWidget, i.e. right after vanilla's own popup list
+  (Crafting.xml lines 611-615), so it draws above the whole crafting screen the way those popups do.
+  Structure copied from CraftingHistoryPopup.xml (scrim + canvas + canvas_gradient + divider +
+  frame_9) with CraftingHeroPopup.xml's close-button arrangement (inset content + Popup.CloseButton
+  at the container's top-right corner).
+
+  DataSource="{WeaponDesign}" for the same reason as the trigger button: CraftingScreenWidget's data
+  source is CraftingVM, but the advisor mixin lives on WeaponDesignVM. Vanilla does exactly this for
+  its own popups (Crafting.xml line 611).
+
+  No literal display text anywhere below - every visible string is a mixin [DataSourceProperty] fed
+  from a localizable TextObject, matching vanilla prefabs, which contain no literal Text= either.
+-->
+<Widget Id="SmithingSuiteAdvisorPopup" DataSource="{WeaponDesign}" WidthSizePolicy="StretchToParent" HeightSizePolicy="StretchToParent" IsVisible="@AdvisorIsPopupOpen">
+  <Children>
+
+    <!--Scrim - CraftingHistoryPopup.xml line 20.-->
+    <Widget WidthSizePolicy="StretchToParent" HeightSizePolicy="StretchToParent" Sprite="BlankWhiteSquare_9" Color="#000000FF" AlphaFactor="0.6" />
+
+    <!--Popup container - CraftingHeroPopup.xml line 24.-->
+    <Widget Id="AdvisorPopupContainer" WidthSizePolicy="Fixed" HeightSizePolicy="Fixed" SuggestedWidth="700" SuggestedHeight="580" VerticalAlignment="Center" HorizontalAlignment="Center">
+      <Children>
+
+        <!--Contents container, inset so the close button can overhang the corner - CraftingHeroPopup.xml line 27.-->
+        <Widget Id="AdvisorPopupContent" WidthSizePolicy="StretchToParent" HeightSizePolicy="StretchToParent" MarginTop="35" MarginRight="35">
+          <Children>
+
+            <ImageWidget WidthSizePolicy="StretchToParent" HeightSizePolicy="StretchToParent" Sprite="StdAssets\Popup\canvas" />
+            <ImageWidget WidthSizePolicy="StretchToParent" HeightSizePolicy="StretchToParent" Sprite="StdAssets\Popup\canvas_gradient" />
+
+            <!--Title + divider - CraftingHistoryPopup.xml lines 29 and 31.-->
+            <TextWidget WidthSizePolicy="StretchToParent" HeightSizePolicy="Fixed" SuggestedHeight="65" MarginTop="5" Text="@AdvisorTitleText" Brush="Crafting.Popup.Title.Text" />
+            <ImageWidget DoNotAcceptEvents="true" WidthSizePolicy="StretchToParent" HeightSizePolicy="Fixed" SuggestedHeight="26" MarginTop="65" MarginLeft="-10" MarginRight="-10" Sprite="StdAssets\Popup\divider" />
+
+            <ListPanel Id="AdvisorBody" WidthSizePolicy="StretchToParent" HeightSizePolicy="CoverChildren" VerticalAlignment="Top" MarginTop="100" MarginLeft="30" MarginRight="30" StackLayout.LayoutMethod="VerticalTopToBottom">
+              <Children>
+
+                <!--
+                Scored axes. Each row is CraftingPropertyList.xml's stat row (lines 14-38): a 185
+                wide right-aligned label container, a 280x17 progress-bar frame at AlphaFactor 0.5,
+                and a 50 wide value column. The row lives inside a plain Widget so the hover catcher
+                below it can overlay the whole row instead of being laid out as another column - the
+                same wrapper-plus-overlay shape vanilla uses for its own hint overlays (Crafting.xml
+                lines 34-51).
+                -->
+                <ListPanel DataSource="{AdvisorAxes}" WidthSizePolicy="StretchToParent" HeightSizePolicy="CoverChildren" StackLayout.LayoutMethod="VerticalTopToBottom">
+                  <ItemTemplate>
+                    <Widget WidthSizePolicy="StretchToParent" HeightSizePolicy="CoverChildren" MarginTop="8">
+                      <Children>
+
+                        <ListPanel WidthSizePolicy="StretchToParent" HeightSizePolicy="CoverChildren" MarginRight="14" StackLayout.LayoutMethod="HorizontalLeftToRight">
+                          <Children>
+
+                            <!--Name-->
+                            <Widget Id="LabelContainer" WidthSizePolicy="Fixed" HeightSizePolicy="CoverChildren" SuggestedWidth="185">
+                              <Children>
+                                <TextWidget Id="Label" WidthSizePolicy="CoverChildren" HeightSizePolicy="CoverChildren" MaxWidth="185" Text="@Name" Brush="Crafting.Property.Name.Text" HorizontalAlignment="Right" Brush.TextHorizontalAlignment="Right" />
+                              </Children>
+                            </Widget>
+
+                            <!--
+                            Bar. Vanilla drives its stat bars with CraftingItemStatSliderWidget, but
+                            that widget also needs the crafting order's target/valid-value bindings
+                            and sibling paths to the value and label text widgets so it can push
+                            Bonus/Penalty brush states onto them - none of which an advisor axis has
+                            an equivalent for. FillBarWidget is vanilla's own driver for a plain
+                            horizontal bar with no target marker (CharacterDeveloper.xml line 270)
+                            and clamps InitialAmountAsFloat/MaxAmountAsFloat to 0..1 itself, so the
+                            filler geometry stays identical to the crafting row while the driving
+                            logic stays one we can actually satisfy.
+                            -->
+                            <Widget WidthSizePolicy="Fixed" HeightSizePolicy="Fixed" SuggestedWidth="280" SuggestedHeight="17" HorizontalAlignment="Right" VerticalAlignment="Center" Sprite="crafting_little_progressbar_frame_9" AlphaFactor="0.5">
+                              <Children>
+                                <FillBarWidget WidthSizePolicy="StretchToParent" HeightSizePolicy="StretchToParent" MarginLeft="5" MarginRight="5" FillWidget="Filler" MaxAmountAsFloat="1" InitialAmountAsFloat="@FillRatio">
+                                  <Children>
+                                    <Widget Id="Filler" WidthSizePolicy="Fixed" HeightSizePolicy="Fixed" SuggestedWidth="11" SuggestedHeight="10" MarginTop="1" HorizontalAlignment="Left" VerticalAlignment="Center" Sprite="crafting_little_progressbar_fill_9" ClipContents="true" />
+                                  </Children>
+                                </FillBarWidget>
+                              </Children>
+                            </Widget>
+
+                            <!--Value - CraftingPropertyList.xml line 38.-->
+                            <TextWidget WidthSizePolicy="Fixed" HeightSizePolicy="CoverChildren" SuggestedWidth="50" MarginLeft="5" VerticalAlignment="Center" Text="@ValueText" Brush="Crafting.Property.Value.Text" Brush.FontSize="20" Brush.TextHorizontalAlignment="Left" Brush.TextAlphaFactor="0.75" />
+
+                          </Children>
+                        </ListPanel>
+
+                        <!--Hover catcher: swaps the explanation block below to this axis's reason.-->
+                        <Widget WidthSizePolicy="StretchToParent" HeightSizePolicy="StretchToParent" Command.HoverBegin="ExecuteHoverAxis" Command.HoverEnd="ExecuteUnhoverAxis" />
+
+                      </Children>
+                    </Widget>
+                  </ItemTemplate>
+                </ListPanel>
+
+                <!--
+                The one explanation block. Shows the verdict by default and whichever axis the
+                pointer is over while it is over it, so the reasons never compete with the numbers
+                for vertical space and the popup's height never depends on how long a reason is.
+                -->
+                <TextWidget WidthSizePolicy="StretchToParent" HeightSizePolicy="Fixed" SuggestedHeight="150" MarginTop="20" Text="@AdvisorExplanationText" Brush="Crafting.Popup.Property.Name.Text" Brush.TextVerticalAlignment="Top" />
+
+                <NavigationScopeTargeter ScopeID="SmithingSuiteAdvisorPopupScope" ScopeParent="..\AdvisorButtons" ScopeMovements="Horizontal" />
+                <ListPanel Id="AdvisorButtons" WidthSizePolicy="CoverChildren" HeightSizePolicy="CoverChildren" HorizontalAlignment="Center" MarginTop="10" StackLayout.LayoutMethod="HorizontalLeftToRight">
+                  <Children>
+
+                    <!--
+                    269x41 is the native size of Crafting\order_mode_button_default, the sprite
+                    behind Crafting.Order.CraftingModeButton (SandBoxSpriteData.xml line 8625) - the
+                    same size vanilla gives its own two buttons with this brush (CraftingCategory.xml
+                    lines 115 and 133). The label margins are copied from there too.
+                    -->
+                    <ButtonWidget Id="AdvisorSuggestButton" WidthSizePolicy="Fixed" HeightSizePolicy="Fixed" SuggestedWidth="269" SuggestedHeight="41" MarginRight="10" Brush="Crafting.Order.CraftingModeButton" Command.Click="ExecuteSuggestBest" IsEnabled="@AdvisorIsSuggestButtonEnabled" UpdateChildrenStates="true" DoNotPassEventsToChildren="true" GamepadNavigationIndex="0">
+                      <Children>
+                        <TextWidget WidthSizePolicy="StretchToParent" HeightSizePolicy="StretchToParent" MarginTop="5" MarginBottom="3" MarginLeft="3" MarginRight="3" Text="@AdvisorSuggestButtonText" Brush="Crafting.Mode.Selection.Text" />
+                        <HintWidget DataSource="{AdvisorSuggestHint}" WidthSizePolicy="StretchToParent" HeightSizePolicy="StretchToParent" Command.HoverBegin="ExecuteBeginHint" Command.HoverEnd="ExecuteEndHint" />
+                      </Children>
+                    </ButtonWidget>
+
+                    <ButtonWidget Id="AdvisorContextButton" WidthSizePolicy="Fixed" HeightSizePolicy="Fixed" SuggestedWidth="269" SuggestedHeight="41" Brush="Crafting.Order.CraftingModeButton" Command.Click="ExecuteToggleMountedContext" IsSelected="@AdvisorIsMounted" DominantSelectedState="true" UpdateChildrenStates="true" DoNotPassEventsToChildren="true" GamepadNavigationIndex="1">
+                      <Children>
+                        <TextWidget WidthSizePolicy="StretchToParent" HeightSizePolicy="StretchToParent" MarginTop="5" MarginBottom="3" MarginLeft="3" MarginRight="3" Text="@AdvisorContextButtonText" Brush="Crafting.Mode.Selection.Text" />
+                        <HintWidget DataSource="{AdvisorContextHint}" WidthSizePolicy="StretchToParent" HeightSizePolicy="StretchToParent" Command.HoverBegin="ExecuteBeginHint" Command.HoverEnd="ExecuteEndHint" />
+                      </Children>
+                    </ButtonWidget>
+
+                  </Children>
+                </ListPanel>
+
+              </Children>
+            </ListPanel>
+
+            <!--Frame last so it draws over the content edges - CraftingHistoryPopup.xml line 113.-->
+            <ImageWidget DoNotAcceptEvents="true" WidthSizePolicy="StretchToParent" HeightSizePolicy="StretchToParent" MarginLeft="-20" MarginTop="-20" MarginRight="-20" MarginBottom="-20" Sprite="frame_9" />
+
+          </Children>
+        </Widget>
+
+        <!--Close button - CraftingHeroPopup.xml line 171.-->
+        <ButtonWidget Id="AdvisorCloseButton" WidthSizePolicy="Fixed" HeightSizePolicy="Fixed" SuggestedWidth="70" SuggestedHeight="70" HorizontalAlignment="Right" VerticalAlignment="Top" Brush="Popup.CloseButton" Command.Click="ExecuteCloseAdvisorPopup">
+          <Children>
+            <HintWidget DataSource="{AdvisorCloseHint}" WidthSizePolicy="StretchToParent" HeightSizePolicy="StretchToParent" Command.HoverBegin="ExecuteBeginHint" Command.HoverEnd="ExecuteEndHint" />
+          </Children>
+        </ButtonWidget>
+
+      </Children>
+    </Widget>
+
+  </Children>
+</Widget>
