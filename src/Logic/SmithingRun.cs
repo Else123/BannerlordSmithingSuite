@@ -73,14 +73,7 @@ namespace SmithingSuite.Logic
             trace.SmeltedTotals(smeltedCountByHero, budgetedSmiths);
 
             int smeltedCount = SumValues(smeltedCountByHero);
-            if (smeltedCount > 0)
-            {
-                // Only reported when this phase actually did something - the aggregate
-                // "nothing to do" line already covers the case where both phases produced
-                // nothing, so an unconditional zero-count line here would just double up a
-                // "nothing happened" toast on the common exhausted-stamina click.
-                trace.Screen("Smithing Suite: smelted " + smeltedCount + " item(s).");
-            }
+            trace.SmeltedToScreen(smeltedCount);
 
             return smeltedCountByHero;
         }
@@ -125,11 +118,7 @@ namespace SmithingSuite.Logic
             trace.MaterialStockSnapshot("Material stock AFTER", stockAfter);
 
             int refinedCount = SumValues(refinedCountByHero);
-            if (refinedCount > 0)
-            {
-                // See RunSmeltPhase's matching guard.
-                trace.Screen("Smithing Suite: refined " + refinedCount + " item(s).");
-            }
+            trace.RefinedToScreen(refinedCount);
 
             return refinedCountByHero;
         }

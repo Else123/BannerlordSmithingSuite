@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using Helpers;
 using SmithingSuite.Logic;
 using TaleWorlds.CampaignSystem;
@@ -61,10 +60,42 @@ namespace SmithingSuite.Integration
                 return;
             }
 
+            // Position resolved by lookup, never an absolute index: PlayerTownVisitCampaignBehavior
+            // has already populated "town" with ~13 vanilla options by the time this listener runs,
+            // and AddOption is a raw list insert - an absolute index (the old "4") drifts the moment
+            // vanilla's own registration order changes. Anchored on vanilla's own "town_smithy"
+            // ("Enter smithy") option (verified by decompiling PlayerTownVisitCampaignBehavior) so
+            // ours lands directly after it; falls back to -1 (append before Leave) if that anchor
+            // cannot be found. Text is passed RAW (with the "{=id}" marker), never .ToString()'d -
+            // CampaignGameStarter.AddGameMenuOption wraps it in its own TextObject internally, and a
+            // pre-resolved string would freeze the language at registration time.
+            int index = FindIndexAfterOption(campaignGameStarter, "town", "town_smithy");
             campaignGameStarter.AddGameMenuOption("town", "smithingsuite_town",
-                new TextObject("{=SSAutoSmith}Automatic smithing", null).ToString(),
+                "{=SmithingSuite_MenuOption}Smelt and refine at the smithy",
                 new GameMenuOption.OnConditionDelegate(SmithingTownCondition),
-                new GameMenuOption.OnConsequenceDelegate(SmithingTownConsequence), false, 4, false);
+                new GameMenuOption.OnConsequenceDelegate(SmithingTownConsequence), false, index, false);
+        }
+
+        // Returns the position directly after the option whose IdString is anchorOptionId, or -1
+        // if no such option exists in the menu yet (caller then appends before Leave, same as
+        // vanilla's own -1 convention - see AddGameMenuOption). GetPresumedGameMenu and
+        // GameMenu.MenuOptions are both public TaleWorlds API (verified by decompiling
+        // CampaignGameStarter/GameMenu), so this needs no reflection.
+        private static int FindIndexAfterOption(CampaignGameStarter campaignGameStarter, string menuId, string anchorOptionId)
+        {
+            GameMenu menu = campaignGameStarter.GetPresumedGameMenu(menuId);
+            int position = 0;
+            foreach (GameMenuOption option in menu.MenuOptions)
+            {
+                if (option.IdString == anchorOptionId)
+                {
+                    return position + 1;
+                }
+
+                position++;
+            }
+
+            return -1;
         }
 
         // Craft (not Trade) is the settlement action that actually gates smithy access - it is
@@ -97,7 +128,6 @@ namespace SmithingSuite.Integration
                     ? Settlement.CurrentSettlement.Name.ToString()
                     : "?";
                 SmithingLog.BeginRun(settlementName);
-                SmithingLog.Screen("Smithing Suite: running at " + settlementName + "...");
 
                 // Read here (not inside SmithingRun) because SmithingRun is engine-free and must
                 // not reference SmithingSuiteConfig - see SmithingRun.Execute's doc.
@@ -110,7 +140,7 @@ namespace SmithingSuite.Integration
                     return;
                 }
 
-                _connector.Report(BuildSummary(report));
+                ReportSummary(report);
             }
             catch (Exception ex)
             {
@@ -133,45 +163,42 @@ namespace SmithingSuite.Integration
             }
         }
 
-        // Stamina spent is derived from a before/after snapshot pair spanning BOTH phases, not
-        // from the planned smelt/refine cost - see RunReport.From, which computed staminaSpent
-        // for each entry the same way.
-        private static string BuildSummary(RunReport report)
+        // One green, full-sentence message PER HERO (vanilla's own convention for a positive
+        // completion - see e.g. trade/recruit outcomes), instead of one \n-packed block with a
+        // header - vanilla never builds a message that way. Stamina spent is derived from a
+        // before/after snapshot pair spanning BOTH phases, not from the planned smelt/refine cost -
+        // see RunReport.From, which computed staminaSpent for each entry the same way.
+        private void ReportSummary(RunReport report)
         {
-            var lines = new List<string>();
             foreach (RunReportEntry entry in report.Entries)
             {
-                lines.Add(new TextObject(
-                        "{=SSSmithSummaryLine}{HERO}: {SMELTED} smelted, {REFINED} refined, {STAMINA} stamina spent",
-                        null)
-                    .SetTextVariable("HERO", entry.HeroName)
-                    .SetTextVariable("SMELTED", entry.Smelted)
-                    .SetTextVariable("REFINED", entry.Refined)
-                    .SetTextVariable("STAMINA", entry.StaminaSpent)
-                    .ToString());
+                _connector.Report(HeroSummaryMessage(entry), ReportTone.Positive);
             }
+        }
 
-            if (lines.Count == 0)
-            {
-                return NothingToDoMessage();
-            }
-
-            string header = new TextObject("{=SSSmeltSummaryHeader}Automatic smithing:", null).ToString();
-            return header + "\n" + string.Join("\n", lines);
+        private static string HeroSummaryMessage(RunReportEntry entry)
+        {
+            return new TextObject(
+                    "{=SmithingSuite_HeroSummary}{HERO} smelted {SMELTED} {?(SMELTED > 1)}items{?}item{\\?} and " +
+                    "refined {REFINED} {?(REFINED > 1)}items{?}item{\\?}, spending {STAMINA} stamina.",
+                    null)
+                .SetTextVariable("HERO", entry.HeroName)
+                .SetTextVariable("SMELTED", entry.Smelted)
+                .SetTextVariable("REFINED", entry.Refined)
+                .SetTextVariable("STAMINA", entry.StaminaSpent)
+                .ToString();
         }
 
         private static string NothingToDoMessage()
         {
             return new TextObject(
-                "{=SSNothingToSmelt}Nothing to smelt: every smith is out of crafting stamina, or there are no unlocked smeltable items.",
+                "{=SmithingSuite_NothingToDo}Nobody in your party has the stamina or materials to smith right now.",
                 null).ToString();
         }
 
         private static string RunFailedMessage()
         {
-            return new TextObject(
-                "{=SSRunFailed}Automatic smithing failed unexpectedly and was stopped. See smithingsuite.log for details.",
-                null).ToString();
+            return new TextObject("{=SmithingSuite_RunFailed}Smithing was interrupted.", null).ToString();
         }
     }
 }

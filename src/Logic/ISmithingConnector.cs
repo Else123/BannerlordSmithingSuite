@@ -46,7 +46,12 @@ namespace SmithingSuite.Logic
         /// </summary>
         bool ExecuteRefine(string heroId, int formulaIndex);
 
-        /// <summary>Surfaces a message to the player (e.g. the post-run summary).</summary>
-        void Report(string message);
+        /// <summary>
+        /// Surfaces a message to the player (e.g. one hero's post-run summary line).
+        /// <paramref name="tone"/> lets the caller request vanilla's "positive outcome" colouring
+        /// without this engine-free layer referencing <c>TaleWorlds.Library.Color</c> directly -
+        /// see <see cref="ReportTone"/>.
+        /// </summary>
+        void Report(string message, ReportTone tone = ReportTone.Neutral);
     }
 }

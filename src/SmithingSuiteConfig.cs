@@ -9,16 +9,17 @@ namespace SmithingSuite
     {
         /// <summary>
         /// When true, <see cref="Integration.SmithingLog"/> writes a detailed per-phase trace to
-        /// the log file (smith pools, candidates, plans, execution results). Default ON while
-        /// this mod is in testing - see Integration.SmithingLog for the file location.
+        /// the log file (smith pools, candidates, plans, execution results). Default OFF for
+        /// release - see Integration.SmithingLog for the file location.
         /// </summary>
-        public static bool VerboseLogging { get; set; } = true;
+        public static bool VerboseLogging { get; set; } = false;
 
         /// <summary>
         /// When true, <see cref="Integration.SmithingLog"/> also posts short phase messages to
-        /// the in-game message log, in addition to the existing run-summary Report(...) message.
+        /// the in-game message log, in addition to the existing per-hero Report(...) messages.
+        /// Default OFF for release.
         /// </summary>
-        public static bool LogToScreen { get; set; } = true;
+        public static bool LogToScreen { get; set; } = false;
 
         /// <summary>
         /// Percentage of a smith's crafting stamina the SMELT phase is allowed to plan against;

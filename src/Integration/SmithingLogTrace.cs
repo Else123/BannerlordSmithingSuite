@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using SmithingSuite.Logic;
+using TaleWorlds.Localization;
 
 namespace SmithingSuite.Integration
 {
@@ -29,9 +30,35 @@ namespace SmithingSuite.Integration
             SmithingLog.Line(message);
         }
 
-        public void Screen(string message)
+        public void SmeltedToScreen(int count)
         {
-            SmithingLog.Screen(message);
+            if (count <= 0)
+            {
+                // Only reported when this phase actually did something - the aggregate "nothing
+                // to do" message already covers the case where both phases produced nothing, so
+                // an unconditional zero-count line here would just double up a "nothing happened"
+                // toast on the common exhausted-stamina click.
+                return;
+            }
+
+            SmithingLog.Screen(new TextObject(
+                    "{=SmithingSuite_Smelted}Smelted {COUNT} {?(COUNT > 1)}items{?}item{\\?}.", null)
+                .SetTextVariable("COUNT", count)
+                .ToString());
+        }
+
+        public void RefinedToScreen(int count)
+        {
+            if (count <= 0)
+            {
+                // See SmeltedToScreen's matching guard.
+                return;
+            }
+
+            SmithingLog.Screen(new TextObject(
+                    "{=SmithingSuite_Refined}Refined {COUNT} {?(COUNT > 1)}items{?}item{\\?}.", null)
+                .SetTextVariable("COUNT", count)
+                .ToString());
         }
 
         public void SmithPool(IReadOnlyList<SmithSnapshot> smiths)

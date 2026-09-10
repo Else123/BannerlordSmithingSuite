@@ -2,8 +2,6 @@ using SmithingSuite.Integration;
 using SmithingSuite.UI;
 using TaleWorlds.CampaignSystem;
 using TaleWorlds.Core;
-using TaleWorlds.Library;
-using TaleWorlds.Localization;
 using TaleWorlds.MountAndBlade;
 
 namespace SmithingSuite
@@ -35,14 +33,6 @@ namespace SmithingSuite
                 campaignGameStarter.AddBehavior(new SmithingBehavior(new SmithingConnector()));
                 campaignGameStarter.AddBehavior(new TravelStaminaBehavior());
             }
-        }
-
-        public override void OnGameInitializationFinished(Game game)
-        {
-            base.OnGameInitializationFinished(game);
-
-            InformationManager.DisplayMessage(new InformationMessage(
-                new TextObject("{=SSWelcome}Thanks for using Smithing Suite! Open a town menu for automatic smithing.", null).ToString()));
         }
     }
 }

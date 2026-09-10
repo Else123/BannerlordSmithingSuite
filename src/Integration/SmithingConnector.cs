@@ -296,9 +296,16 @@ namespace SmithingSuite.Integration
             return true;
         }
 
-        public void Report(string message)
+        // Positive uses vanilla's own "good outcome" green (verified by decompiling vanilla's own
+        // completion messages); Neutral leaves InformationMessage's own default (Color.White),
+        // matching how vanilla reports the overwhelming majority of its messages.
+        private static readonly Color PositiveColor = new Color(0f, 1f, 0f);
+
+        public void Report(string message, ReportTone tone = ReportTone.Neutral)
         {
-            InformationManager.DisplayMessage(new InformationMessage(message));
+            InformationManager.DisplayMessage(tone == ReportTone.Positive
+                ? new InformationMessage(message, PositiveColor)
+                : new InformationMessage(message));
         }
 
         private static Hero FindSmith(string heroId)

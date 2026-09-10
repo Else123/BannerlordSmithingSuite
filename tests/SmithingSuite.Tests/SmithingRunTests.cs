@@ -152,7 +152,8 @@ namespace SmithingSuite.Tests
         {
             public void Section(string title) { }
             public void Line(string message) { }
-            public void Screen(string message) { }
+            public void SmeltedToScreen(int count) { }
+            public void RefinedToScreen(int count) { }
             public void SmithPool(IReadOnlyList<SmithSnapshot> smiths) { }
             public void StaminaBudgetHeader(int sharePercent) { }
             public void StaminaBudgetEntry(SmithSnapshot fullSmith, SmithSnapshot budgetedSmith) { }
@@ -279,7 +280,7 @@ namespace SmithingSuite.Tests
                 return true;
             }
 
-            public void Report(string message)
+            public void Report(string message, ReportTone tone = ReportTone.Neutral)
             {
             }
         }
@@ -307,7 +308,7 @@ namespace SmithingSuite.Tests
             public bool ExecuteSmelt(string heroId, string itemId) => false;
             public MaterialStock GetMaterialStock() => _stock;
             public bool ExecuteRefine(string heroId, int formulaIndex) => true;
-            public void Report(string message) { }
+            public void Report(string message, ReportTone tone = ReportTone.Neutral) { }
         }
     }
 }

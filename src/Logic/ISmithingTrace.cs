@@ -21,8 +21,15 @@ namespace SmithingSuite.Logic
         /// <summary>One free-form timestamped line.</summary>
         void Line(string message);
 
-        /// <summary>A short message posted to the in-game message log (not just the file).</summary>
-        void Screen(string message);
+        /// <summary>
+        /// Posts a short "smelted N item(s)" message to the in-game message log. A no-op when
+        /// count is 0, so the aggregate "nothing to do" message never gets doubled up by an
+        /// unconditional zero-count line on the common exhausted-stamina click.
+        /// </summary>
+        void SmeltedToScreen(int count);
+
+        /// <summary>Refine-phase counterpart to <see cref="SmeltedToScreen"/>.</summary>
+        void RefinedToScreen(int count);
 
         void SmithPool(IReadOnlyList<SmithSnapshot> smiths);
         void StaminaBudgetHeader(int sharePercent);
