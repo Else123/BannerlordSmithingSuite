@@ -10,7 +10,6 @@ using TaleWorlds.CampaignSystem.ViewModelCollection.WeaponCrafting.WeaponDesign;
 using TaleWorlds.Core;
 using TaleWorlds.Core.ViewModelCollection.Information;
 using TaleWorlds.Library;
-using TaleWorlds.Localization;
 
 namespace SmithingSuite.UI
 {
@@ -55,16 +54,6 @@ namespace SmithingSuite.UI
         // above them the bar simply reads full while the number printed next to it stays exact.
         private const float EffectiveDamageDisplayCeiling = 100f;
         private const float SaleValueDisplayCeiling = 50000f;
-
-        // WeaponScorer's axis names. Matching on the display name is what keeps the Advisor layer's
-        // public API untouched (it exposes no axis identity of its own); an unrecognised name falls
-        // through to a zero ceiling, i.e. an empty bar next to a still-correct number, so a future
-        // rename degrades the bar rather than the data.
-        private const string EffectiveDamageAxisName = "Effective Damage";
-        private const string AttackSpeedAxisName = "Attack Speed";
-        private const string ReachAxisName = "Reach";
-        private const string HandlingAxisName = "Handling";
-        private const string SaleValueAxisName = "Sale Value";
 
         // Logged once per run (not once per call) - RefreshItem can fire every frame, so a broken
         // mixin must not spam the log the same way EngineDesignEvaluator's own failures do not.
@@ -149,27 +138,19 @@ namespace SmithingSuite.UI
             SmithingSuiteMcmSettings.Apply();
 
             _advisorAxes = new MBBindingList<AdvisorAxisItemVM>();
-            AdvisorTitleText = Localized("{=SmithingSuite_Advisor_Title}Crafting Advisor");
-            AdvisorSuggestButtonText = Localized("{=SmithingSuite_Advisor_SuggestBest}Suggest Best");
-            _advisorContextButtonText = ContextLabel(mounted: false);
-            _baseExplanation = Localized(
-                "{=SmithingSuite_Advisor_NoDesign}No design to score yet - pick pieces for this "
-                + "weapon and the advisor will rate what you are building.");
+            AdvisorTitleText = AdvisorTextRenderer.Title;
+            AdvisorSuggestButtonText = AdvisorTextRenderer.SuggestButton;
+            _advisorContextButtonText = AdvisorTextRenderer.ContextButtonLabel(MountedContext.OnFoot);
+            _baseExplanation = AdvisorTextRenderer.NoDesign;
             _advisorExplanationText = _baseExplanation;
 
             // Hints are built once and reused: BasicTooltipViewModel takes a delegate that the
             // tooltip system calls at hover time, so a single instance per button stays correct even
             // though the mixin's state changes underneath it.
-            AdvisorTriggerHint = Hint("{=SmithingSuite_Advisor_TriggerHint}Open the crafting "
-                + "advisor: scored axes with a plain-language reason for each, for the design you "
-                + "are building right now.");
-            AdvisorSuggestHint = Hint("{=SmithingSuite_Advisor_SuggestHint}Search this template's "
-                + "unlocked pieces for the best-scoring design your smith can actually craft. Runs "
-                + "under a time budget and reports the best design found.");
-            AdvisorContextHint = Hint("{=SmithingSuite_Advisor_ContextHint}Switch the scoring "
-                + "weights between fighting on foot and fighting from horseback.");
-            AdvisorCloseHint = Hint("{=SmithingSuite_Advisor_CloseHint}Close the advisor and go "
-                + "back to the design.");
+            AdvisorTriggerHint = Hint(AdvisorTextRenderer.TriggerHint);
+            AdvisorSuggestHint = Hint(AdvisorTextRenderer.SuggestHint);
+            AdvisorContextHint = Hint(AdvisorTextRenderer.ContextHint);
+            AdvisorCloseHint = Hint(AdvisorTextRenderer.CloseHint);
 
             // One-shot, unconditional (the constructor itself only ever runs once per mixin
             // instance): confirms UIExtenderEx actually constructed this mixin, distinct from the
@@ -417,7 +398,7 @@ namespace SmithingSuite.UI
             try
             {
                 AdvisorIsMounted = !AdvisorIsMounted;
-                AdvisorContextButtonText = ContextLabel(AdvisorIsMounted);
+                AdvisorContextButtonText = AdvisorTextRenderer.ContextButtonLabel(CurrentContext());
                 // Context flips ScoreWeights.ForContext's axis weights - force a rescore even though
                 // the design key itself has not changed, so the toggle takes visible effect
                 // immediately instead of waiting for the next incidental RefreshItem tick. Still just
@@ -479,13 +460,12 @@ namespace SmithingSuite.UI
                 PieceCatalogue catalogue = BuildCatalogue(vm);
                 if (catalogue.AvailablePieces.Count == 0)
                 {
-                    SetBaseExplanation(Localized("{=SmithingSuite_Advisor_NoPieces}No unlocked "
-                        + "pieces are available to search for this template."));
+                    SetBaseExplanation(AdvisorTextRenderer.NoUnlockedPieces);
                     return;
                 }
 
                 DesignCandidate seed = BuildSeed(vm);
-                MountedContext context = AdvisorIsMounted ? MountedContext.Mounted : MountedContext.OnFoot;
+                MountedContext context = CurrentContext();
                 ScoreWeights weights = ScoreWeights.ForContext(context);
 
                 // The wall-clock guard (see this method's class doc): owned here, not by
@@ -505,7 +485,7 @@ namespace SmithingSuite.UI
 
                 LogIfAbortedOnTime(result, searchClock.ElapsedMilliseconds, timeBudgetMs, evaluationBudget);
 
-                SetBaseExplanation(DescribeSuggestion(result));
+                SetBaseExplanation(AdvisorTextRenderer.Suggestion(DescribeSuggestion(result)));
             }
             catch (Exception ex)
             {
@@ -647,7 +627,7 @@ namespace SmithingSuite.UI
                     return;
                 }
 
-                MountedContext context = AdvisorIsMounted ? MountedContext.Mounted : MountedContext.OnFoot;
+                MountedContext context = CurrentContext();
                 ScoreWeights weights = ScoreWeights.ForContext(context);
                 WeaponScore score = WeaponScorer.Score(stats, context, weights);
 
@@ -659,7 +639,7 @@ namespace SmithingSuite.UI
                 UpdateAxes(score, crafting);
                 // The design (or context) changed - any previously computed suggestion no longer
                 // describes what is on screen, so the explanation falls back to the fresh verdict.
-                SetBaseExplanation(BuildVerdict(score, context));
+                SetBaseExplanation(AdvisorTextRenderer.Verdict(BuildVerdict(score, context)));
 
                 if (!_hasLoggedFirstSuccess)
                 {
@@ -762,9 +742,14 @@ namespace SmithingSuite.UI
             AdvisorAxes.Clear();
             foreach (ScoreAxis axis in score.Axes)
             {
-                float fillRatio = FillRatioFor(axis.Name, axis.Value, reachMax, speedMax, handlingMax);
-                AdvisorAxes.Add(new AdvisorAxisItemVM(axis.Name, axis.Value, axis.Reason, fillRatio,
-                    ShowAxisReason, RestoreBaseExplanation));
+                float fillRatio = FillRatioFor(axis.Kind, axis.Value, reachMax, speedMax, handlingMax);
+                AdvisorAxes.Add(new AdvisorAxisItemVM(
+                    AdvisorTextRenderer.AxisName(axis.Kind),
+                    axis.Value,
+                    AdvisorTextRenderer.Reason(axis.Reason),
+                    fillRatio,
+                    ShowAxisReason,
+                    RestoreBaseExplanation));
             }
         }
 
@@ -824,33 +809,36 @@ namespace SmithingSuite.UI
         /// non-positive denominator yields an empty bar rather than a division by zero, and the
         /// result is clamped so a value above the ceiling reads as full while the number printed next
         /// to the bar stays exact.
+        ///
+        /// Keyed on <see cref="AdvisorAxisKind"/>, not on the axis's display name: the axis's
+        /// identity is now part of the Advisor layer's public API, so this lookup no longer depends
+        /// on English wording that a translation - or a copy-edit - could silently invalidate. An
+        /// axis kind with no ceiling defined here still falls through to an empty bar next to a
+        /// still-correct number.
         /// </summary>
-        private static float FillRatioFor(string axisName, float value, float reachMax, float speedMax, float handlingMax)
+        private static float FillRatioFor(AdvisorAxisKind kind, float value, float reachMax, float speedMax, float handlingMax)
         {
             float ceiling;
-            if (axisName == ReachAxisName)
+            switch (kind)
             {
-                ceiling = reachMax;
-            }
-            else if (axisName == AttackSpeedAxisName)
-            {
-                ceiling = speedMax;
-            }
-            else if (axisName == HandlingAxisName)
-            {
-                ceiling = handlingMax;
-            }
-            else if (axisName == EffectiveDamageAxisName)
-            {
-                ceiling = EffectiveDamageDisplayCeiling;
-            }
-            else if (axisName == SaleValueAxisName)
-            {
-                ceiling = SaleValueDisplayCeiling;
-            }
-            else
-            {
-                ceiling = 0f;
+                case AdvisorAxisKind.Reach:
+                    ceiling = reachMax;
+                    break;
+                case AdvisorAxisKind.AttackSpeed:
+                    ceiling = speedMax;
+                    break;
+                case AdvisorAxisKind.Handling:
+                    ceiling = handlingMax;
+                    break;
+                case AdvisorAxisKind.EffectiveDamage:
+                    ceiling = EffectiveDamageDisplayCeiling;
+                    break;
+                case AdvisorAxisKind.SaleValue:
+                    ceiling = SaleValueDisplayCeiling;
+                    break;
+                default:
+                    ceiling = 0f;
+                    break;
             }
 
             if (ceiling <= 0f)
@@ -1034,25 +1022,20 @@ namespace SmithingSuite.UI
             pieces.Add(new DesignPiece(piece.StringId, pieceVm.PieceType, pieceVm.Tier, element.ScalePercentage));
         }
 
-        private static string ContextLabel(bool mounted)
+        /// <summary>
+        /// The scoring context the popup's toggle currently selects. The bound
+        /// <see cref="AdvisorIsMounted"/> flag is the single source of truth for it, so every reader
+        /// - the two scoring paths and the toggle's own caption - goes through here rather than
+        /// repeating the ternary and risking one of them drifting.
+        /// </summary>
+        private MountedContext CurrentContext()
         {
-            return mounted
-                ? Localized("{=SmithingSuite_Advisor_ContextMounted}Context: Mounted")
-                : Localized("{=SmithingSuite_Advisor_ContextOnFoot}Context: On Foot");
+            return AdvisorIsMounted ? MountedContext.Mounted : MountedContext.OnFoot;
         }
 
-        private static BasicTooltipViewModel Hint(string localizationKeyedText)
+        private static BasicTooltipViewModel Hint(string text)
         {
-            string text = Localized(localizationKeyedText);
             return new BasicTooltipViewModel(() => text);
-        }
-
-        // Every string this class hands to the prefab goes through here: the prefab itself carries no
-        // literal display text (vanilla prefabs carry none either), so the "{=id}Fallback" form is
-        // what makes these translatable without a module_strings entry having to exist yet.
-        private static string Localized(string keyedText)
-        {
-            return new TextObject(keyedText, null).ToString();
         }
 
         private void LogFailureOnce(Exception ex)

@@ -109,9 +109,13 @@
     <Compile Include="Logic\ReportTone.cs" />
     <Compile Include="Logic\RunReport.cs" />
     <Compile Include="Logic\SmithingRun.cs" />
+    <Compile Include="Advisor\AdvisorAxisKind.cs" />
+    <Compile Include="Advisor\AdvisorPieceKind.cs" />
     <Compile Include="Advisor\AdvisorPresentation.cs" />
     <Compile Include="Advisor\AdvisorSearchPolicy.cs" />
     <Compile Include="Advisor\ArmourModel.cs" />
+    <Compile Include="Advisor\AttackMode.cs" />
+    <Compile Include="Advisor\AxisReason.cs" />
     <Compile Include="Advisor\DamageKind.cs" />
     <Compile Include="Advisor\DesignCandidate.cs" />
     <Compile Include="Advisor\DesignEvaluation.cs" />
@@ -131,6 +135,7 @@
     <Compile Include="SmithingSuiteConfig.cs" />
     <Compile Include="SmithingSuiteMcmSettings.cs" />
     <Compile Include="UI\AdvisorPrefabExtensions.cs" />
+    <Compile Include="UI\AdvisorTextRenderer.cs" />
     <Compile Include="UI\UiExtensionBridge.cs" />
     <Compile Include="UI\WeaponDesignAdvisorMixin.cs" />
   </ItemGroup>

@@ -6,17 +6,20 @@ namespace SmithingSuite.Advisor
     /// <summary>
     /// One named, explained facet of a weapon's score. The user's whole complaint about vanilla's
     /// crafting screen is that it shows numbers with no judgement (SPEC-SLICE4-5.md "Problem") - so
-    /// every axis must be able to say, in plain language, why its value is what it is (AC10).
+    /// every axis must be able to say why its value is what it is (AC10). It says so as DATA - an
+    /// <see cref="AdvisorAxisKind"/> and an <see cref="AxisReason"/> - not as a rendered English
+    /// sentence: this layer is engine-free (no <c>TextObject</c>) so that it can be unit-tested on the
+    /// host SDK, which would otherwise doom the advisor's most visible feature to being English-only.
     /// </summary>
     public sealed class ScoreAxis
     {
-        public string Name { get; }
+        public AdvisorAxisKind Kind { get; }
         public float Value { get; }
-        public string Reason { get; }
+        public AxisReason Reason { get; }
 
-        public ScoreAxis(string name, float value, string reason)
+        public ScoreAxis(AdvisorAxisKind kind, float value, AxisReason reason)
         {
-            Name = name;
+            Kind = kind;
             Value = value;
             Reason = reason;
         }
@@ -54,7 +57,7 @@ namespace SmithingSuite.Advisor
     public static class WeaponScorer
     {
         // Representative armour tiers from SPEC-SLICE4-5.md ("WeaponScore bullet"). The composite
-        // score is anchored to the middle tier; light/heavy are reported in the reason text only, so
+        // score is anchored to the middle tier; light/heavy are carried in the reason only, so
         // the player sees how the weapon's standing shifts across armour rather than a single point
         // sample presented as the whole truth.
         private const float LightArmourTier = 20f;
@@ -85,14 +88,14 @@ namespace SmithingSuite.Advisor
             float chosenDamage;
             DamageKind chosenDamageType;
             float chosenEffectiveAtMedium;
-            string modeName;
+            AttackMode chosenMode;
             if (useThrust)
             {
                 chosenSpeed = stats.ThrustSpeed;
                 chosenDamage = stats.ThrustDamage;
                 chosenDamageType = stats.ThrustDamageType;
                 chosenEffectiveAtMedium = thrustEffectiveAtMedium;
-                modeName = "thrust";
+                chosenMode = AttackMode.Thrust;
             }
             else
             {
@@ -100,38 +103,45 @@ namespace SmithingSuite.Advisor
                 chosenDamage = stats.SwingDamage;
                 chosenDamageType = stats.SwingDamageType;
                 chosenEffectiveAtMedium = swingEffectiveAtMedium;
-                modeName = "swing";
+                chosenMode = AttackMode.Swing;
             }
 
             var effectiveAtLight = ArmourModel.EffectiveDamage(chosenDamage, chosenDamageType, LightArmourTier);
             var effectiveAtHeavy = ArmourModel.EffectiveDamage(chosenDamage, chosenDamageType, HeavyArmourTier);
 
             var effectiveDamageAxis = new ScoreAxis(
-                "Effective Damage",
+                AdvisorAxisKind.EffectiveDamage,
                 chosenEffectiveAtMedium,
-                $"Best mode is {modeName} ({chosenDamage:F0} {chosenDamageType} dmg): {effectiveAtLight:F1} effective dmg vs light armour (20), " +
-                $"{chosenEffectiveAtMedium:F1} vs medium armour (40, the score's baseline), {effectiveAtHeavy:F1} vs heavy armour (60) - " +
-                "computed via the engine's verified armour formula, never the raw damage number.");
+                AxisReason.EffectiveDamage(
+                    chosenMode,
+                    chosenDamageType,
+                    chosenDamage,
+                    LightArmourTier,
+                    MediumArmourTier,
+                    HeavyArmourTier,
+                    effectiveAtLight,
+                    chosenEffectiveAtMedium,
+                    effectiveAtHeavy));
 
             var attackSpeedAxis = new ScoreAxis(
-                "Attack Speed",
+                AdvisorAxisKind.AttackSpeed,
                 chosenSpeed,
-                $"{modeName} speed is {chosenSpeed:F0} - the mode reported here is the one chosen above because it penetrates better at medium armour.");
+                AxisReason.AttackSpeed(chosenMode, chosenSpeed));
 
             var reachAxis = new ScoreAxis(
-                "Reach",
+                AdvisorAxisKind.Reach,
                 stats.WeaponLength,
-                $"Weapon length is {stats.WeaponLength:F0} - more reach means hitting the opponent before they can hit back.");
+                AxisReason.Reach(stats.WeaponLength));
 
             var handlingAxis = new ScoreAxis(
-                "Handling",
+                AdvisorAxisKind.Handling,
                 stats.Handling,
-                $"Handling is {stats.Handling:F0} - how quickly the weapon can be redirected between attacks.");
+                AxisReason.Handling(stats.Handling));
 
             var saleValueAxis = new ScoreAxis(
-                "Sale Value",
+                AdvisorAxisKind.SaleValue,
                 stats.Value,
-                $"Sells for {stats.Value} gold - kept as its own axis, never folded into the combat score, because a good fighter and a good earner are not always the same weapon.");
+                AxisReason.SaleValue(stats.Value));
 
             var axes = new List<ScoreAxis>
             {
