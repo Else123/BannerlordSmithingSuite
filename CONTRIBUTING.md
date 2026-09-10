@@ -47,8 +47,9 @@ Build `src/SmithingSuite.csproj` with MSBuild:
 - **Debug** is what you build against while developing.
 - **Release** (`/p:Configuration=Release /p:Platform=x64`) is the configuration to ship.
 
-A post-build step deploys the DLL, PDB, `SubModule.xml` and the advisor's UI prefab XML files into
-`<BannerlordPath>\Modules\SmithingSuite\`, matching the structure Bannerlord expects:
+A post-build step deploys the DLL, PDB, `SubModule.xml`, the advisor's UI prefab XML files and the
+English language files into `<BannerlordPath>\Modules\SmithingSuite\`, matching the structure
+Bannerlord expects:
 
 ```
 Modules\SmithingSuite\
@@ -59,6 +60,9 @@ Modules\SmithingSuite\
     GUI\Prefabs\
         AdvisorTriggerButton.xml
         AdvisorPopup.xml
+    ModuleData\Languages\
+        language_data.xml
+        std_smithingsuite_strings.xml
 ```
 
 ## Running the tests

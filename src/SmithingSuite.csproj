@@ -95,6 +95,7 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Logic\SmithSnapshot.cs" />
     <Compile Include="Logic\RefineFormulaSnapshot.cs" />
     <Compile Include="Logic\MaterialStock.cs" />
@@ -163,6 +164,13 @@
     <!-- The advisor's XML fragments - PrefabExtensionFileName (AdvisorPrefabExtensions.cs) searches
          this module's GUI folder recursively at runtime, so they must be deployed alongside the DLL. -->
     <Copy SourceFiles="$(ProjectDir)UI\Prefabs\AdvisorTriggerButton.xml;$(ProjectDir)UI\Prefabs\AdvisorPopup.xml" DestinationFolder="$(ModOutputPath)\GUI\Prefabs" />
+    <!-- Language files (language_data.xml + std_smithingsuite_strings.xml) - loaded by the game's
+         localisation manager from ModuleData\Languages at startup, no SubModule.xml <Xmls> entry
+         needed. Recursive copy mirrors AutoTrader's own CopyToBannerlord target. -->
+    <ItemGroup>
+      <ModuleDataFiles Include="$(ProjectDir)ModuleData\**\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(ModuleDataFiles)" DestinationFiles="@(ModuleDataFiles->'$(ModOutputPath)\ModuleData\%(RecursiveDir)%(Filename)%(Extension)')" />
     <Message Text="Deployed Smithing Suite to $(ModOutputPath)" Importance="high" />
   </Target>
 </Project>

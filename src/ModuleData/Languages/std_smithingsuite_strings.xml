@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<base xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" type="string">
+  <tags>
+    <tag language="English" />
+  </tags>
+  <strings>
+    <string id="SmithingSuite_MenuOption" text="Smelt and refine at the smithy" />
+    <string id="SmithingSuite_HeroSummary" text="{HERO} smelted {SMELTED} {?(SMELTED &gt; 1)}items{?}item{\?} and refined {REFINED} {?(REFINED &gt; 1)}items{?}item{\?}, spending {STAMINA} stamina." />
+    <string id="SmithingSuite_NothingToDo" text="Nobody in your party has the stamina or materials to smith right now." />
+    <string id="SmithingSuite_RunFailed" text="Smithing was interrupted." />
+
+    <string id="SmithingSuite_Smelted" text="Smelted {COUNT} {?(COUNT &gt; 1)}items{?}item{\?}." />
+    <string id="SmithingSuite_Refined" text="Refined {COUNT} {?(COUNT &gt; 1)}items{?}item{\?}." />
+
+    <string id="SmithingSuite_Advisor_Title" text="Crafting Advisor" />
+    <string id="SmithingSuite_Advisor_SuggestBest" text="Suggest Best" />
+    <string id="SmithingSuite_Advisor_NoDesign" text="No design to score yet - pick pieces for this weapon and the advisor will rate what you are building." />
+    <string id="SmithingSuite_Advisor_NoPieces" text="No unlocked pieces are available to search for this template." />
+    <string id="SmithingSuite_Advisor_TriggerHint" text="Open the crafting advisor: scored axes with a plain-language reason for each, for the design you are building right now." />
+    <string id="SmithingSuite_Advisor_SuggestHint" text="Search this template's unlocked pieces for the best-scoring design your smith can actually craft. Runs under a time budget and reports the best design found." />
+    <string id="SmithingSuite_Advisor_ContextHint" text="Switch the scoring weights between fighting on foot and fighting from horseback." />
+    <string id="SmithingSuite_Advisor_CloseHint" text="Close the advisor and go back to the design." />
+    <string id="SmithingSuite_Advisor_ContextButton_Mounted" text="Context: Mounted" />
+    <string id="SmithingSuite_Advisor_ContextButton_OnFoot" text="Context: On Foot" />
+
+    <string id="SmithingSuite_Advisor_Axis_EffectiveDamage" text="Effective Damage" />
+    <string id="SmithingSuite_Advisor_Axis_AttackSpeed" text="Attack Speed" />
+    <string id="SmithingSuite_Advisor_Axis_Reach" text="Reach" />
+    <string id="SmithingSuite_Advisor_Axis_Handling" text="Handling" />
+    <string id="SmithingSuite_Advisor_Axis_SaleValue" text="Sale Value" />
+
+    <string id="SmithingSuite_Advisor_Reason_EffectiveDamage" text="Best mode is {MODE} ({RAW_DAMAGE} {DAMAGE_TYPE} dmg): {EFFECTIVE_LIGHT} effective dmg vs light armour ({ARMOUR_LIGHT}), {EFFECTIVE_MEDIUM} vs medium armour ({ARMOUR_MEDIUM}, the score's baseline), {EFFECTIVE_HEAVY} vs heavy armour ({ARMOUR_HEAVY}) - computed via the engine's verified armour formula, never the raw damage number." />
+    <string id="SmithingSuite_Advisor_Reason_AttackSpeed" text="{MODE} speed is {SPEED} - the mode reported here is the one chosen above because it penetrates better at medium armour." />
+    <string id="SmithingSuite_Advisor_Reason_Reach" text="Weapon length is {LENGTH} - more reach means hitting the opponent before they can hit back." />
+    <string id="SmithingSuite_Advisor_Reason_Handling" text="Handling is {HANDLING} - how quickly the weapon can be redirected between attacks." />
+    <string id="SmithingSuite_Advisor_Reason_SaleValue" text="Sells for {GOLD} gold - kept as its own axis, never folded into the combat score, because a good fighter and a good earner are not always the same weapon." />
+
+    <string id="SmithingSuite_Advisor_Verdict" text="Combat score ({CONTEXT}): {COMBAT_TOTAL} - sale value {GOLD} gold. Axes below explain why." />
+    <string id="SmithingSuite_Advisor_NoImprovement" text="No craftable improvement was found within the current smithing skill and unlocked parts." />
+    <string id="SmithingSuite_Advisor_Suggestion" text="Suggested: {PIECES} -&gt; combat score {COMBAT_TOTAL}, sale value {GOLD} gold{BUDGET_NOTE}." />
+    <string id="SmithingSuite_Advisor_BudgetExhausted" text="(search budget exhausted - best found so far)" />
+    <string id="SmithingSuite_Advisor_SuggestionPiece" text="{PIECE_KIND} {PIECE_ID} @{SCALE}%" />
+
+    <string id="SmithingSuite_Advisor_Piece_Blade" text="Blade" />
+    <string id="SmithingSuite_Advisor_Piece_Guard" text="Guard" />
+    <string id="SmithingSuite_Advisor_Piece_Handle" text="Handle" />
+    <string id="SmithingSuite_Advisor_Piece_Pommel" text="Pommel" />
+    <string id="SmithingSuite_Advisor_Piece_Unknown" text="Piece" />
+
+    <string id="SmithingSuite_Advisor_Mode_Thrust" text="thrust" />
+    <string id="SmithingSuite_Advisor_Mode_Swing" text="swing" />
+    <string id="SmithingSuite_Advisor_Context_Mounted" text="mounted" />
+    <string id="SmithingSuite_Advisor_Context_OnFoot" text="on foot" />
+
+    <string id="SmithingSuite_Advisor_DamageType_Cut" text="Cut" />
+    <string id="SmithingSuite_Advisor_DamageType_Pierce" text="Pierce" />
+    <string id="SmithingSuite_Advisor_DamageType_Blunt" text="Blunt" />
+
+    <!-- MCM settings page (SmithingSuiteMcmSettings.cs) - verified via decompile that MCM v5 wraps
+         these DisplayName/HintText/group-name strings in a TaleWorlds TextObject before display, so
+         "{=id}Fallback" markers here resolve normally (AttributeGlobalSettings.DisplayName, the page
+         title, is the one exception and stays a plain literal - see the class doc). -->
+    <string id="SmithingSuite_Mcm_Group_General" text="General" />
+    <string id="SmithingSuite_Mcm_Group_Production" text="Production" />
+    <string id="SmithingSuite_Mcm_Group_Travel" text="Travel" />
+    <string id="SmithingSuite_Mcm_Group_Advisor" text="Advisor" />
+
+    <string id="SmithingSuite_Mcm_VerboseLogging_Name" text="Verbose Logging" />
+    <string id="SmithingSuite_Mcm_VerboseLogging_Hint" text="Writes a detailed log to Documents. Enable before reporting a bug." />
+    <string id="SmithingSuite_Mcm_LogToScreen_Name" text="Log to Screen" />
+    <string id="SmithingSuite_Mcm_LogToScreen_Hint" text="Also posts short phase messages to the in-game message log, in addition to the summary shown after every use." />
+
+    <string id="SmithingSuite_Mcm_SmeltStaminaShare_Name" text="Smelt Stamina Share" />
+    <string id="SmithingSuite_Mcm_SmeltStaminaShare_Hint" text="The share of each smith's crafting stamina spent on smelting; the remainder is left for refining." />
+
+    <string id="SmithingSuite_Mcm_TravelStaminaEnabled_Name" text="Recover Stamina While Travelling" />
+    <string id="SmithingSuite_Mcm_TravelStaminaEnabled_Hint" text="When enabled, heroes in your own party also recover crafting stamina while travelling between settlements, not just inside one. Never affects AI-controlled parties." />
+    <string id="SmithingSuite_Mcm_TravelStaminaMultiplier_Name" text="Travel Recovery Rate" />
+    <string id="SmithingSuite_Mcm_TravelStaminaMultiplier_Hint" text="Multiplier on the travelling recovery rate. 1.0 means travelling recovers crafting stamina at exactly the same rate as resting in a settlement." />
+
+    <string id="SmithingSuite_Mcm_AdvisorEvaluationBudget_Name" text="Evaluation Budget" />
+    <string id="SmithingSuite_Mcm_AdvisorEvaluationBudget_Hint" text="Soft cap on how many candidate weapon designs the advisor evaluates per search. Higher values can find a marginally better design at the cost of a longer search." />
+    <string id="SmithingSuite_Mcm_AdvisorTimeBudget_Name" text="Search Time Budget" />
+    <string id="SmithingSuite_Mcm_AdvisorTimeBudget_Hint" text="Hard wall-clock cap, in milliseconds, on one 'Suggest best' search. When it trips, the search stops immediately and returns the best design found so far." />
+
+    <string id="SmithingSuite_Mcm_OnFootDamageWeight_Name" text="On Foot Damage Weight" />
+    <string id="SmithingSuite_Mcm_OnFootDamageWeight_Hint" text="How much a design's effective damage counts towards its on-foot score. A tuning value, not a game rule." />
+    <string id="SmithingSuite_Mcm_OnFootAttackSpeedWeight_Name" text="On Foot Attack Speed Weight" />
+    <string id="SmithingSuite_Mcm_OnFootAttackSpeedWeight_Hint" text="How much attack speed counts towards the on-foot score. A tuning value, not a game rule." />
+    <string id="SmithingSuite_Mcm_OnFootReachWeight_Name" text="On Foot Reach Weight" />
+    <string id="SmithingSuite_Mcm_OnFootReachWeight_Hint" text="How much reach counts towards the on-foot score. A tuning value, not a game rule." />
+    <string id="SmithingSuite_Mcm_OnFootHandlingWeight_Name" text="On Foot Handling Weight" />
+    <string id="SmithingSuite_Mcm_OnFootHandlingWeight_Hint" text="How much handling counts towards the on-foot score. A tuning value, not a game rule." />
+
+    <string id="SmithingSuite_Mcm_MountedDamageWeight_Name" text="Mounted Damage Weight" />
+    <string id="SmithingSuite_Mcm_MountedDamageWeight_Hint" text="How much a design's effective damage counts towards its mounted score. A tuning value, not a game rule." />
+    <string id="SmithingSuite_Mcm_MountedAttackSpeedWeight_Name" text="Mounted Attack Speed Weight" />
+    <string id="SmithingSuite_Mcm_MountedAttackSpeedWeight_Hint" text="How much attack speed counts towards the mounted score. A tuning value, not a game rule." />
+    <string id="SmithingSuite_Mcm_MountedReachWeight_Name" text="Mounted Reach Weight" />
+    <string id="SmithingSuite_Mcm_MountedReachWeight_Hint" text="How much reach counts towards the mounted score. A tuning value, not a game rule." />
+    <string id="SmithingSuite_Mcm_MountedHandlingWeight_Name" text="Mounted Handling Weight" />
+    <string id="SmithingSuite_Mcm_MountedHandlingWeight_Hint" text="How much handling counts towards the mounted score. A tuning value, not a game rule." />
+  </strings>
+</base>
