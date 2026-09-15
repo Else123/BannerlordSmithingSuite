@@ -83,16 +83,33 @@ namespace SmithingSuite.Integration
         // CampaignGameStarter/GameMenu), so this needs no reflection.
         private static int FindIndexAfterOption(CampaignGameStarter campaignGameStarter, string menuId, string anchorOptionId)
         {
+            // Guarded rather than trusted: this runs inside the OnSessionLaunched listener, so an
+            // escaping NullReferenceException would break session launch itself, not merely this
+            // one menu option.
             GameMenu menu = campaignGameStarter.GetPresumedGameMenu(menuId);
-            int position = 0;
-            foreach (GameMenuOption option in menu.MenuOptions)
+            if (menu != null)
             {
-                if (option.IdString == anchorOptionId)
+                int position = 0;
+                foreach (GameMenuOption option in menu.MenuOptions)
                 {
-                    return position + 1;
-                }
+                    if (option.IdString == anchorOptionId)
+                    {
+                        return position + 1;
+                    }
 
-                position++;
+                    position++;
+                }
+            }
+
+            // Falling back is safe but it silently moves the option, and the placement is the one
+            // thing about this feature a player notices before using it. Say which path was taken
+            // so a "why is it in the wrong place" report is answerable from the log alone. Flushed
+            // because no run is open yet at session launch.
+            if (SmithingLog.IsVerbose)
+            {
+                SmithingLog.Line("SmithingBehavior: menu anchor '" + anchorOptionId + "' not found in menu '"
+                    + menuId + "' - appending the option instead of placing it after the anchor");
+                SmithingLog.Flush();
             }
 
             return -1;
