@@ -75,6 +75,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="ScenariosSubModule.cs" />
+    <Compile Include="HealthScenario.cs" />
     <Compile Include="SmeltThenRefineScenario.cs" />
   </ItemGroup>
   <ItemGroup>

@@ -11,7 +11,8 @@ namespace SmithingSuite.Integration
 {
     /// <summary>
     /// Owns the "Automatic smithing" town menu option. Mirrors the AutoTrader's town-menu
-    /// pattern: registers on <see cref="CampaignEvents.OnSessionLaunchedEvent"/>, gates the
+    /// pattern, but registers on <see cref="CampaignEvents.OnAfterSessionLaunchedEvent"/> so the
+    /// vanilla "town" menu is complete before the option is placed after "town_smithy"; gates the
     /// option through <see cref="SettlementAccessModel"/>, then on trigger delegates the
     /// two-phase run to <see cref="SmithingRun"/> (engine-free, Refactor A) and reports the
     /// resulting <see cref="RunReport"/>. Contains no smelt/refine orchestration or TaleWorlds
@@ -37,7 +38,14 @@ namespace SmithingSuite.Integration
 
         public override void RegisterEvents()
         {
-            CampaignEvents.OnSessionLaunchedEvent.AddNonSerializedListener(this, OnGameLoaded);
+            // OnAfterSessionLaunched, not OnSessionLaunched: MbEvent invokes listeners in REVERSE
+            // registration order (AddNonSerializedListener prepends), and mod behaviors register
+            // after SandBoxManager.Initialize's vanilla ones. On OnSessionLaunched this listener
+            // therefore ran BEFORE PlayerTownVisitCampaignBehavior built the "town" menu, found no
+            // "town_smithy" anchor and appended to an empty menu (verified by decompiling
+            // MbEvent<T>, SandBoxManager.Initialize and Campaign.OnSessionStart, which raises
+            // OnAfterSessionLaunched only once every OnSessionLaunched listener has returned).
+            CampaignEvents.OnAfterSessionLaunchedEvent.AddNonSerializedListener(this, OnGameLoaded);
         }
 
         public override void SyncData(IDataStore dataStore)
@@ -60,10 +68,12 @@ namespace SmithingSuite.Integration
                 return;
             }
 
-            // Position resolved by lookup, never an absolute index: PlayerTownVisitCampaignBehavior
-            // has already populated "town" with ~13 vanilla options by the time this listener runs,
-            // and AddOption is a raw list insert - an absolute index (the old "4") drifts the moment
-            // vanilla's own registration order changes. Anchored on vanilla's own "town_smithy"
+            // Position resolved by lookup, never an absolute index: on OnAfterSessionLaunched every
+            // OnSessionLaunched menu builder (PlayerTownVisitCampaignBehavior's ~13 options, other
+            // mods' inserts) has already run, and AddOption is a raw list insert - an absolute index
+            // (the old "4") drifts the moment anyone's registration order changes. Inserts made
+            // after ours at an index at or before "town_smithy" (vanilla's port/warehouse/revenue
+            // options) shift both options together, so they stay adjacent. Anchored on vanilla's own "town_smithy"
             // ("Enter smithy") option (verified by decompiling PlayerTownVisitCampaignBehavior) so
             // ours lands directly after it; falls back to -1 (append before Leave) if that anchor
             // cannot be found. Text is passed RAW (with the "{=id}" marker), never .ToString()'d -
@@ -83,7 +93,7 @@ namespace SmithingSuite.Integration
         // CampaignGameStarter/GameMenu), so this needs no reflection.
         private static int FindIndexAfterOption(CampaignGameStarter campaignGameStarter, string menuId, string anchorOptionId)
         {
-            // Guarded rather than trusted: this runs inside the OnSessionLaunched listener, so an
+            // Guarded rather than trusted: this runs inside the OnAfterSessionLaunched listener, so an
             // escaping NullReferenceException would break session launch itself, not merely this
             // one menu option.
             GameMenu menu = campaignGameStarter.GetPresumedGameMenu(menuId);

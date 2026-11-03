@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- The "Smelt and refine at the smithy" town menu option now sits directly after "Enter smithy".
+  It used to land near the top of the menu because it was registered before the game had built
+  the town menu.
+
 ### Known issues
 
 - The crafting advisor popup has never been confirmed on screen in-game. Production automation
