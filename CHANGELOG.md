@@ -12,6 +12,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   It used to land near the top of the menu because it was registered before the game had built
   the town menu.
 
+### Changed
+
+- Errors and caught exceptions are now always written to `smithingsuite.log`, tagged `[ERROR]`,
+  even with Verbose Logging off. Previously a failure left no trace unless verbose logging was on.
+  Informational and trace lines, including expected fallbacks such as an unknown crafting
+  template from another mod, are still written only in verbose mode.
+
 ### Known issues
 
 - The crafting advisor popup has never been confirmed on screen in-game. Production automation

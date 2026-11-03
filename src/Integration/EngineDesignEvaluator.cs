@@ -53,7 +53,7 @@ namespace SmithingSuite.Integration
             }
             catch (Exception ex)
             {
-                LogFailureOnce("unexpected exception - " + ex.Message);
+                LogFailureOnce("unexpected exception - " + ex.Message, isException: true);
                 return UnusableEvaluation;
             }
         }
@@ -227,7 +227,12 @@ namespace SmithingSuite.Integration
             }
         }
 
-        private void LogFailureOnce(string reason)
+        /// <summary>
+        /// Real exceptions (<paramref name="isException"/>) go to <see cref="SmithingLog.Error"/> and are
+        /// always written. Expected fallbacks (unknown template id from another mod, null candidate,
+        /// no campaign, ...) stay verbose-only trace lines via <see cref="SmithingLog.Line"/>.
+        /// </summary>
+        private void LogFailureOnce(string reason, bool isException = false)
         {
             if (_hasLoggedFailure)
             {
@@ -235,11 +240,18 @@ namespace SmithingSuite.Integration
             }
 
             _hasLoggedFailure = true;
-            SmithingLog.Line("EngineDesignEvaluator: " + reason);
-            // Evaluate() runs inside DesignOptimizer's "Suggest best" search, entirely outside
-            // any SmithingBehavior run - the batching optimisation does not apply, so flush
-            // immediately or this one-shot diagnosis may never reach disk this session (see
-            // SmithingLog.Flush()).
+            string message = "EngineDesignEvaluator: " + reason;
+            if (isException)
+            {
+                // Evaluate() runs inside DesignOptimizer's "Suggest best" search, entirely outside
+                // any SmithingBehavior run; Error() flushes immediately so this one-shot diagnosis
+                // reaches disk.
+                SmithingLog.Error(message);
+                return;
+            }
+
+            SmithingLog.Line(message);
+            // Same reason as above: no run block is open, so flush or the line may never reach disk.
             SmithingLog.Flush();
         }
     }

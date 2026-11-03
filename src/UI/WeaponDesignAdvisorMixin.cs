@@ -1046,10 +1046,8 @@ namespace SmithingSuite.UI
             }
 
             _hasLoggedFailure = true;
-            SmithingLog.Line("WeaponDesignAdvisorMixin: disabling advisor after exception - " + ex.Message);
-            // The crafting screen has no town-menu run around it - the batching optimisation does
-            // not apply here, so flush immediately (see SmithingLog.Flush()).
-            SmithingLog.Flush();
+            // Error() flushes immediately: the crafting screen has no town-menu run around it.
+            SmithingLog.Error("WeaponDesignAdvisorMixin: disabling advisor after exception - " + ex.Message);
         }
     }
 

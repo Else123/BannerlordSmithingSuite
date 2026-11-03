@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using SmithingSuite.Integration;
+using SmithingSuite.Logic;
 using TaleWorlds.CampaignSystem;
 using TaleWorlds.CampaignSystem.GameMenus;
 using TestRig.Harness.Logic;
@@ -25,15 +26,12 @@ namespace SmithingSuite.Scenarios
             Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
             "Mount and Blade II Bannerlord", "SmithingSuite", "smithingsuite.log");
 
-        // The mod has no error level: SmithingLog only has Line/Section. Its error paths log these
-        // phrases (SmithingBehavior.SmithingTownConsequence, WeaponDesignAdvisorMixin). Lines are
-        // written only while VerboseLogging is on. The "UIExtenderEx unavailable" line is an
-        // optional-dependency note, not an error, and is deliberately not a marker.
-        private static readonly string[] ErrorMarkers =
-        {
-            "run failed with an unexpected exception",
-            "disabling advisor after exception",
-        };
+        // Error paths (SmithingBehavior.SmithingTownConsequence, WeaponDesignAdvisorMixin,
+        // EngineDesignEvaluator) call SmithingLog.Error, which writes a line carrying this tag
+        // regardless of VerboseLogging, so the check is meaningful with default settings. Info and
+        // trace lines (e.g. the "UIExtenderEx unavailable" optional-dependency note) are written
+        // only while VerboseLogging is on and are not errors. The check covers error lines only.
+        private static readonly string[] ErrorMarkers = { LogMarkers.ErrorTag };
 
         // The harness calls Run twice on the same instance: "@0" before the soak, "@N" after it.
         private long? _logLengthAtStart;

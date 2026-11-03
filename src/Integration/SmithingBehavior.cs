@@ -178,7 +178,7 @@ namespace SmithingSuite.Integration
                 // exception escapes into a crash dialog instead of degrading gracefully. Log the
                 // detail for diagnosis, then tell the player honestly that the run failed rather
                 // than silently doing nothing or letting the game crash.
-                SmithingLog.Line("SmithingTownConsequence: run failed with an unexpected exception - " + ex);
+                SmithingLog.Error("SmithingTownConsequence: run failed with an unexpected exception - " + ex);
                 _connector.Report(RunFailedMessage());
             }
             finally

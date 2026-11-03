@@ -66,6 +66,20 @@ namespace SmithingSuite.Integration
             AppendLine("[" + DateTime.Now.ToString("HH:mm:ss.fff") + "] " + message);
         }
 
+        /// <summary>
+        /// Appends one error line (tagged <see cref="LogMarkers.ErrorTag"/>) regardless of
+        /// VerboseLogging, so failures are diagnosable and detectable with default settings.
+        /// Reaches disk promptly unless a run block is open (EndRun flushes it then).
+        /// </summary>
+        public static void Error(string message)
+        {
+            AppendLine(LogMarkers.FormatError(DateTime.Now.ToString("HH:mm:ss.fff"), message));
+            if (!_runInProgress)
+            {
+                Flush();
+            }
+        }
+
         /// <summary>Appends a visually separated header so one run's phases are easy to scan.</summary>
         public static void Section(string title)
         {
