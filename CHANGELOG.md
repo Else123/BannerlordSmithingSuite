@@ -18,6 +18,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   even with Verbose Logging off. Previously a failure left no trace unless verbose logging was on.
   Informational and trace lines, including expected fallbacks such as an unknown crafting
   template from another mod, are still written only in verbose mode.
+- A failure in the hourly travel stamina recovery is now logged once per campaign load with an
+  `[ERROR]` tag instead of being swallowed silently. The campaign tick itself is still never
+  interrupted.
+- The module now declares Bannerlord v1.4.8 as the dependent game version in `SubModule.xml`.
 
 ### Known issues
 

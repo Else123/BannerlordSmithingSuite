@@ -25,6 +25,8 @@ namespace SmithingSuite.Integration
     /// </summary>
     public class TravelStaminaBehavior : CampaignBehaviorBase
     {
+        private bool _errorLogged;
+
         public override void RegisterEvents()
         {
             CampaignEvents.HourlyTickEvent.AddNonSerializedListener(this, OnHourlyTick);
@@ -75,10 +77,17 @@ namespace SmithingSuite.Integration
             {
                 RecoverPartyStamina(behavior);
             }
-            catch
+            catch (Exception ex)
             {
                 // This handler fires every in-game hour for the lifetime of the campaign - a
-                // diagnostics or balance feature must never be able to break the hourly tick.
+                // diagnostics or balance feature must never be able to break the hourly tick, so
+                // the exception is swallowed. It is logged once per campaign load (a persistent failure
+                // would otherwise write a line every hour); Error() flushes immediately.
+                if (!_errorLogged)
+                {
+                    _errorLogged = true;
+                    SmithingLog.Error("TravelStaminaBehavior: hourly stamina recovery failed (logged once per campaign load): " + ex);
+                }
             }
         }
 
