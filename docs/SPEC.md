@@ -1,6 +1,6 @@
 # Smithing Suite - Spec
 
-Mount & Blade II: Bannerlord mod (v1.4.7 + War Sails / NavalDLC).
+Mount & Blade II: Bannerlord mod (v1.4.8 + War Sails / NavalDLC).
 Own module on vanilla anchors - **no fork, no third-party code copied**.
 Public repo -> English only. New code: high standard (Clean Code, SRP/DI).
 

@@ -8,7 +8,7 @@ Bannerlord! This document covers setup, build and the conventions the codebase f
 - **Visual Studio 2022 or later** (MSBuild for the old-style csproj)
 - **.NET Framework 4.8 SDK** (mod DLL)
 - **.NET SDK** matching `net10.0` (engine-free unit tests)
-- **Mount & Blade II: Bannerlord**, v1.4.7 or later (built against v1.4.8, War Sails)
+- **Mount & Blade II: Bannerlord**, v1.4.8 (War Sails)
 
 ## Initial setup
 

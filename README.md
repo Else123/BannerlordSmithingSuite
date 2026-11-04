@@ -1,6 +1,6 @@
 # Bannerlord Smithing Suite
 
-A gameplay mod for Mount & Blade II: Bannerlord (v1.4.7 or later, built against v1.4.8, War Sails)
+A gameplay mod for Mount & Blade II: Bannerlord (v1.4.8, War Sails)
 that takes the tedium out of smithing **without taking the game out of it**.
 
 ## What it does
@@ -30,7 +30,7 @@ from `DefaultStrikeMagnitudeModel`, not from community guesswork. Only the *weig
 
 ## Requirements
 
-- Mount & Blade II: Bannerlord v1.4.7 or later
+- Mount & Blade II: Bannerlord v1.4.8 (War Sails)
 - [Mod Configuration Menu v5](https://steamcommunity.com/sharedfiles/filedetails/?id=2859238197) (required)
 - [UIExtenderEx](https://steamcommunity.com/sharedfiles/filedetails/?id=2859222409) (optional — only
   the inline crafting advisor needs it; everything else works without it)
