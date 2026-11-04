@@ -77,6 +77,8 @@
     <Compile Include="ScenariosSubModule.cs" />
     <Compile Include="HealthScenario.cs" />
     <Compile Include="SmeltThenRefineScenario.cs" />
+    <Compile Include="NothingToDoScenario.cs" />
+    <Compile Include="TravelStaminaScenario.cs" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="SubModule.xml">

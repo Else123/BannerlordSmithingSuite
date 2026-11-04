@@ -20,3 +20,5 @@ and `TestRig.Harness.dll` from that folder and copies its own DLL, PDB and `SubM
 | Id | Class | Checks |
 |----|-------|--------|
 | `smithing.smelt-then-refine` (SM-1) | `SmeltThenRefineScenario` | one run smelts and refines, removes exactly the smelted weapons, keeps smelting within the stamina share |
+| `smithing.nothing-to-do` (SM-2) | `NothingToDoScenario` | with no crafted weapons and no crafting materials but full stamina, one run reports `NothingHappened` with no entries and leaves item counts, every smith's stamina and the main hero's gold unchanged; setup checks the connector sees every smith and removes those items for good |
+| `smithing.travel-stamina` (SM-3) | `TravelStaminaScenario` | outside any settlement, with stamina 0 and multiplier 0.6 set on the MCM instance only (the mod's hourly tick must bridge it), each party hero gains exactly `hours x Round(vanilla hourly rate x 0.6)` over `Days(1)`; setup checks the max stamina leaves room for 24 hours of gain and `hours.max` checks that at most 24 hours passed, so the clamp cannot mask a wrong gain; MCM values and stamina are restored afterwards |
